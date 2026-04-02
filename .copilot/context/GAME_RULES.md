@@ -41,7 +41,7 @@
 
 ### Desarrollo de una Ronda
 
-El juego se desarrolla en **3 rondas**. Cada turno:
+El juego se desarrolla en **3 rondas**. Cada turno: #OJO: SEGÚN NUESTRAS REGLAS SERÍA TANTAS RONDAS COMO SEAN POSIBLES
 
 1. Todos los jugadores **eligen simultáneamente 1 carta** de su mano y la colocan boca abajo frente a ellos.
 2. Cuando todos han elegido, se **revelan las cartas al mismo tiempo**.
