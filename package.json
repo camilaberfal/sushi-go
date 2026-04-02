@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "node --experimental-strip-types --test tests/e2e/*.spec.ts",
+    "test:integration": "node --experimental-strip-types --test tests/integration/*.spec.ts",
+    "qa": "npm run lint && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

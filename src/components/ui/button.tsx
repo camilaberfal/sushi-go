@@ -26,14 +26,34 @@ type ButtonSize = keyof typeof buttonSizeClass;
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  asChild?: boolean;
 };
 
-export function Button({ className, variant = "default", size = "default", type = "button", ...props }: ButtonProps) {
+export function Button({
+  className,
+  variant = "default",
+  size = "default",
+  type = "button",
+  asChild = false,
+  children,
+  ...props
+}: ButtonProps) {
+  const mergedClassName = cn(buttonBaseClass, buttonVariantClass[variant], buttonSizeClass[size], className);
+
+  if (asChild && React.isValidElement(children)) {
+    const child = children as React.ReactElement<{ className?: string }>;
+    return React.cloneElement(child, {
+      className: cn(mergedClassName, child.props.className),
+    });
+  }
+
   return (
     <button
       type={type}
-      className={cn(buttonBaseClass, buttonVariantClass[variant], buttonSizeClass[size], className)}
+      className={mergedClassName}
       {...props}
-    />
+    >
+      {children}
+    </button>
   );
 }
