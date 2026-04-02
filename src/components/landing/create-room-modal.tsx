@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button, Card, Input, Label } from "@/components/ui";
+import { getErrorMessage } from "@/lib/error-message";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { ensureGuestUser } from "@/lib/guest-session";
 
@@ -16,6 +17,18 @@ type RoomRow = {
   id: string;
   code: string;
 };
+
+function roundsByPlayers(playerCount: number): number {
+  if (playerCount === 2) return 5;
+  if (playerCount === 3) return 4;
+  return 3;
+}
+
+function roundOptionsByPlayers(playerCount: number): number[] {
+  if (playerCount === 2) return [3, 4, 5];
+  if (playerCount === 3) return [3, 4];
+  return [3];
+}
 
 function generateRoomId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -38,9 +51,16 @@ export function CreateRoomModal({ open, onOpenChange }: CreateRoomModalProps) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(4);
+  const [roundCount, setRoundCount] = useState(3);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const roundOptions = useMemo(() => roundOptionsByPlayers(maxPlayers), [maxPlayers]);
+
+  useEffect(() => {
+    const defaultRounds = roundsByPlayers(maxPlayers);
+    setRoundCount((current) => (roundOptions.includes(current) ? current : defaultRounds));
+  }, [maxPlayers, roundOptions]);
 
   const disabled = useMemo(() => loading || displayName.trim().length < 2, [displayName, loading]);
 
@@ -72,6 +92,7 @@ export function CreateRoomModal({ open, onOpenChange }: CreateRoomModalProps) {
             host_id: userId,
             max_players: maxPlayers,
             password_hash: password.trim() ? password.trim() : null,
+            settings: { total_rounds: roundCount },
           });
 
         if (!insert.error) {
@@ -111,8 +132,9 @@ export function CreateRoomModal({ open, onOpenChange }: CreateRoomModalProps) {
 
       onOpenChange(false);
       router.push(`/lobby/${room.code}`);
-    } catch {
-      setError("Ocurrió un error al crear la sala.");
+    } catch (error) {
+      console.error("create-room failed", error);
+      setError(getErrorMessage(error, "Ocurrió un error al crear la sala."));
     } finally {
       setLoading(false);
     }
@@ -142,6 +164,27 @@ export function CreateRoomModal({ open, onOpenChange }: CreateRoomModalProps) {
               <option value={4}>4</option>
               <option value={5}>5</option>
             </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Cantidad de rondas</Label>
+            {roundOptions.length > 1 ? (
+              <select
+                value={roundCount}
+                onChange={(event) => setRoundCount(Number(event.target.value))}
+                className="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
+              >
+                {roundOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option} rondas
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="h-10 w-full rounded-lg border border-input bg-muted/40 px-3 text-sm leading-10">
+                3 rondas (fijo para 4-5 jugadores)
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

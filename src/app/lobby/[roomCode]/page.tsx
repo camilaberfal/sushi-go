@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { PlayerList } from "@/components/lobby/player-list";
 import { RoomCode } from "@/components/lobby/room-code";
-import { Button, Card, Input, Label } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 type Room = {
@@ -13,7 +13,6 @@ type Room = {
   code: string;
   host_id: string;
   max_players: number;
-  password_hash: string | null;
   status: string;
 };
 
@@ -36,22 +35,16 @@ export default function LobbyPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [maxPlayersInput, setMaxPlayersInput] = useState("4");
-  const [passwordInput, setPasswordInput] = useState("");
-
   const isHost = useMemo(() => !!room && !!currentUserId && room.host_id === currentUserId, [room, currentUserId]);
 
   const loadLobby = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
     const supabase = getSupabaseBrowserClient();
     const auth = await supabase.auth.getUser();
     setCurrentUserId(auth.data.user?.id ?? null);
 
     const roomRes = await supabase
       .from("rooms")
-      .select("id, code, host_id, max_players, password_hash, status")
+      .select("id, code, host_id, max_players, status")
       .eq("code", roomCode)
       .single();
 
@@ -63,8 +56,6 @@ export default function LobbyPage() {
 
     const lobbyRoom = roomRes.data as Room;
     setRoom(lobbyRoom);
-    setMaxPlayersInput(String(lobbyRoom.max_players));
-    setPasswordInput(lobbyRoom.password_hash ?? "");
 
     const playersRes = await supabase
       .from("room_players")
@@ -83,7 +74,13 @@ export default function LobbyPage() {
   }, [roomCode]);
 
   useEffect(() => {
-    void loadLobby();
+    const timer = window.setTimeout(() => {
+      void loadLobby();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [loadLobby]);
 
   useEffect(() => {
@@ -106,34 +103,11 @@ export default function LobbyPage() {
     };
   }, [loadLobby, room?.id]);
 
-  const updateRoomSettings = async () => {
-    if (!room || !isHost) return;
-
-    const nextMaxPlayers = Number(maxPlayersInput);
-    if (!Number.isInteger(nextMaxPlayers) || nextMaxPlayers < 2 || nextMaxPlayers > 5) {
-      setError("El límite debe estar entre 2 y 5 jugadores.");
-      return;
-    }
-
-    if (players.length > nextMaxPlayers) {
-      setError("No puedes bajar el límite por debajo de los jugadores actuales.");
-      return;
-    }
-
-    const supabase = getSupabaseBrowserClient();
-    const result = await supabase
-      .from("rooms")
-      .update({ max_players: nextMaxPlayers, password_hash: passwordInput.trim() ? passwordInput.trim() : null })
-      .eq("id", room.id);
-
-    if (result.error) {
-      setError(result.error.message);
-      return;
-    }
-
-    setError(null);
-    void loadLobby();
-  };
+  useEffect(() => {
+    if (!room?.code) return;
+    if (room.status === "LOBBY") return;
+    router.push(`/game/${room.code}`);
+  }, [room?.code, room?.status, router]);
 
   const startMatch = async () => {
     if (!room || !isHost) return;
@@ -181,40 +155,14 @@ export default function LobbyPage() {
           <Card className="border-2 border-border/80 bg-card/95 p-5">
             <h1 className="font-heading text-3xl text-foreground">Lobby de espera</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {isHost ? "Configura la sala y empieza cuando estén listos." : "Esperando a que el host inicie la partida."}
+              {isHost ? "Cuando estén listos, inicia la partida." : "Esperando a que el host inicie la partida."}
             </p>
 
             <div className="mt-5 space-y-4">
-              <div className="space-y-2">
-                <Label>Límite de jugadores</Label>
-                <Input
-                  disabled={!isHost}
-                  value={maxPlayersInput}
-                  onChange={(event) => setMaxPlayersInput(event.target.value)}
-                  type="number"
-                  min={2}
-                  max={5}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Contraseña</Label>
-                <Input
-                  disabled={!isHost}
-                  value={passwordInput}
-                  onChange={(event) => setPasswordInput(event.target.value)}
-                  placeholder={isHost ? "Opcional" : "Solo el host puede editar"}
-                  type="password"
-                />
-              </div>
-
               {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
               {isHost ? (
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button className="flex-1" onClick={updateRoomSettings} variant="outline">
-                    Guardar ajustes
-                  </Button>
                   <Button className="flex-1" disabled={players.length < 2} onClick={startMatch}>
                     Iniciar partida
                   </Button>

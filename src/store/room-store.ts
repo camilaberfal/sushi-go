@@ -74,5 +74,6 @@ export function getRoomStoreState(): RoomStoreState {
 }
 
 export function useRoomStore<T>(selector: (state: RoomStoreState) => T): T {
-  return useSyncExternalStore(subscribe, () => selector(storeState), () => selector(storeState));
+  const snapshot = useSyncExternalStore(subscribe, getRoomStoreState, getRoomStoreState);
+  return selector(snapshot);
 }

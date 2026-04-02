@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { initialGameMachineState } from "../../src/domain/state-machine";
-import { CardInstance } from "../../src/domain/types";
+import type { CardInstance } from "../../src/domain/types";
 import {
-  AuthoritativeRoomState,
   resolveGracePeriodBots,
   setPlayerPresence,
   submitSelectCard,
 } from "../../src/server/game-engine";
+import type { AuthoritativeRoomState } from "../../src/server/game-engine";
 
 function card(id: string, type: CardInstance["type"]): CardInstance {
   return { id, type };

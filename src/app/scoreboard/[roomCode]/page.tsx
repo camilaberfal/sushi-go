@@ -61,12 +61,12 @@ export default function ScoreboardPage() {
   const [players, setPlayers] = useState<GamePlayerRow[]>([]);
   const [roundSummaries, setRoundSummaries] = useState<RoundSummaryRow[]>([]);
   const [history, setHistory] = useState<MatchHistoryRow | null>(null);
+  const isRoomCodeValid = roomCode.length > 0;
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
+    if (!isRoomCodeValid) return;
 
+    const load = async () => {
       const supabase = getSupabaseBrowserClient();
       const roomRes = await supabase.from("rooms").select("id, code").eq("code", roomCode).single();
       if (roomRes.error || !roomRes.data) {
@@ -126,13 +126,8 @@ export default function ScoreboardPage() {
       setLoading(false);
     };
 
-    if (roomCode) {
-      void load();
-    } else {
-      setError("Codigo de sala invalido.");
-      setLoading(false);
-    }
-  }, [roomCode]);
+    void load();
+  }, [isRoomCodeValid, roomCode]);
 
   const podiumPlayers = useMemo(
     () => players.map((player) => ({ playerId: player.user_id, displayName: player.display_name, finalScore: player.final_score, puddings: player.puddings })),
@@ -147,6 +142,21 @@ export default function ScoreboardPage() {
         <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-56 rounded-2xl" />
         <Skeleton className="h-72 rounded-2xl" />
+      </main>
+    );
+  }
+
+  if (!isRoomCodeValid) {
+    return (
+      <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-4 py-10">
+        <Card className="w-full p-6">
+          <p className="text-destructive">Codigo de sala invalido.</p>
+          <div className="mt-4">
+            <Button asChild variant="outline">
+              <Link href="/">Volver al inicio</Link>
+            </Button>
+          </div>
+        </Card>
       </main>
     );
   }

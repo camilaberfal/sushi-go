@@ -27,7 +27,12 @@ export function playSfx(key: SfxKey): void {
   try {
     const sound = getSound(key);
     sound.currentTime = 0;
-    void sound.play();
+    const playPromise = sound.play();
+    if (playPromise) {
+      void playPromise.catch(() => {
+        // Ignore async playback rejections (unsupported source, autoplay policy, etc.).
+      });
+    }
   } catch {
     // Avoid hard failure if audio subsystem is unavailable.
   }

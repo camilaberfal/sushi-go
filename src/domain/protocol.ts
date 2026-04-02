@@ -5,6 +5,7 @@ export type RoomStatus = "LOBBY" | "ROUND_1" | "ROUND_2" | "ROUND_3" | "WAITING_
 export type PlayerPresence = "online" | "offline" | "bot";
 
 export type SelectCardPayload = {
+  playerId?: string;
   cardId: string;
   timestamp: number;
   useChopsticks: boolean;
@@ -35,14 +36,15 @@ export type SyncPlayerState = {
   hand: string[];
   playedCards: string[];
   puddings: number;
-  scoreByRound: [number, number, number];
+  scoreByRound: number[];
   presence: PlayerPresence;
 };
 
 export type SyncAfterTurnPayload = {
   roomId: string;
   status: RoomStatus;
-  round: 1 | 2 | 3;
+  round: number;
+  totalRounds: number;
   turn: number;
   players: Record<string, SyncPlayerState>;
 };

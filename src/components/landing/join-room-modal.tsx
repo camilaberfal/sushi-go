@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button, Card, Input, Label } from "@/components/ui";
+import { getErrorMessage } from "@/lib/error-message";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { ensureGuestUser } from "@/lib/guest-session";
 
@@ -12,16 +13,21 @@ type JoinRoomModalProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-type RoomRow = {
-  id: string;
-  code: string;
-  max_players: number;
-  password_hash: string | null;
-};
-
-type PlayerSeat = {
+type JoinRoomRpcRow = {
+  room_id: string;
+  room_code: string;
   seat_index: number;
 };
+
+function mapJoinRoomError(message: string): string {
+  if (message.includes("ROOM_NOT_FOUND")) return "La sala no existe.";
+  if (message.includes("INVALID_PASSWORD")) return "Contraseña incorrecta.";
+  if (message.includes("ROOM_FULL")) return "La sala está llena.";
+  if (message.includes("ROOM_NOT_JOINABLE")) return "La partida ya inició o no acepta ingresos.";
+  if (message.includes("AUTH_REQUIRED")) return "Necesitas iniciar sesión para unirte a la sala.";
+  if (message.includes("DISPLAY_NAME_REQUIRED")) return "Ingresa un nombre para continuar.";
+  return message;
+}
 
 export function JoinRoomModal({ open, onOpenChange }: JoinRoomModalProps) {
   const router = useRouter();
@@ -51,59 +57,29 @@ export function JoinRoomModal({ open, onOpenChange }: JoinRoomModalProps) {
         return;
       }
 
-      const roomResult = await supabase.from("rooms").select("id, code, max_players, password_hash").eq("code", code).single();
-      if (roomResult.error || !roomResult.data) {
-        setError("La sala no existe.");
-        return;
-      }
-
-      const room = roomResult.data as RoomRow;
-      if (room.password_hash && room.password_hash !== password.trim()) {
-        setError("Contraseña incorrecta.");
-        return;
-      }
-
-      const seatsResult = await supabase.from("room_players").select("seat_index").eq("room_id", room.id);
-      if (seatsResult.error) {
-        setError(seatsResult.error.message);
-        return;
-      }
-
-      const seats = (seatsResult.data ?? []) as PlayerSeat[];
-      if (seats.length >= room.max_players) {
-        setError("La sala está llena.");
-        return;
-      }
-
-      const usedSeat = new Set(seats.map((entry) => entry.seat_index));
-      let nextSeat = 0;
-      while (usedSeat.has(nextSeat)) {
-        nextSeat += 1;
-      }
-
-      const upsert = await supabase.from("room_players").insert({
-        room_id: room.id,
-        user_id: userId,
-        display_name: displayName.trim(),
-        is_host: false,
-        seat_index: nextSeat,
-        presence: "online",
+      const result = await supabase.rpc("join_room_by_code", {
+        p_code: code,
+        p_display_name: displayName.trim(),
+        p_password: password.trim() ? password.trim() : null,
       });
 
-      if (upsert.error) {
-        if (upsert.error.code === "23505") {
-          onOpenChange(false);
-          router.push(`/lobby/${room.code}`);
-          return;
-        }
-        setError(upsert.error.message);
+      if (result.error) {
+        setError(mapJoinRoomError(result.error.message));
+        return;
+      }
+
+      const payload = Array.isArray(result.data) ? result.data[0] : result.data;
+      const joinedRoom = payload as JoinRoomRpcRow | null;
+      if (!joinedRoom?.room_code) {
+        setError("No se pudo unir a la sala. Intenta de nuevo.");
         return;
       }
 
       onOpenChange(false);
-      router.push(`/lobby/${room.code}`);
-    } catch {
-      setError("Ocurrió un error al unirte a la sala.");
+      router.push(`/lobby/${joinedRoom.room_code}`);
+    } catch (error) {
+      console.error("join-room failed", error);
+      setError(getErrorMessage(error, "Ocurrió un error al unirte a la sala."));
     } finally {
       setLoading(false);
     }

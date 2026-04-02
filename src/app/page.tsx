@@ -16,12 +16,11 @@ export default function Home() {
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_15%_10%,rgba(255,107,95,0.25),transparent_35%),radial-gradient(circle_at_90%_20%,rgba(72,199,195,0.25),transparent_35%),radial-gradient(circle_at_50%_90%,rgba(255,210,103,0.3),transparent_40%)]" />
 
       <section className="mx-auto flex w-full max-w-5xl flex-col items-center gap-8 text-center">
-        <div className="rounded-3xl border-2 border-white/70 bg-white/55 p-3 shadow-xl backdrop-blur">
+        <div className="rounded-3xl">
           <Image src="/sushigo-logo.png" alt="Sushi Go logo" width={360} height={120} priority />
         </div>
 
         <Card className="w-full max-w-2xl border-2 border-primary/20 bg-card/85 p-8 shadow-xl backdrop-blur">
-          <h1 className="font-heading font-bold text-5xl text-foreground">Sushi Go! Online</h1>
           <p className="mx-auto mt-3 max-w-xl text-base text-muted-foreground">
             Partidas rápidas, simultáneas y caóticamente kawaii. Crea una sala o entra con código en segundos.
           </p>

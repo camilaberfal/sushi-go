@@ -25,7 +25,7 @@ export type AuthoritativePlayerState = {
   hand: CardInstance[];
   playedCards: CardInstance[];
   puddings: number;
-  scoreByRound: [number, number, number];
+  scoreByRound: number[];
   presence: PlayerPresence;
   availableChopsticks: number;
   disconnectedAtMs?: number;
@@ -153,6 +153,7 @@ function resolveTurn(state: AuthoritativeRoomState): EngineResolution {
       roomId: state.roomId,
       status: nextState.machine.status,
       round: nextState.machine.round,
+      totalRounds: nextState.players[nextState.turnOrder[0]]?.scoreByRound.length ?? 3,
       turn: nextState.machine.turn,
       players: Object.fromEntries(
         Object.entries(nextState.players).map(([playerId, player]) => [playerId, syncPlayerState(player)])

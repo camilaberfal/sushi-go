@@ -2,7 +2,7 @@ import { RoomEventType, RoomStatus } from "./protocol";
 
 export type GameMachineState = {
   status: RoomStatus;
-  round: 1 | 2 | 3;
+  round: number;
   turn: number;
   totalTurnsInRound: number;
 };
@@ -16,8 +16,10 @@ export function initialGameMachineState(): GameMachineState {
   };
 }
 
-function statusForRound(round: 1 | 2 | 3): RoomStatus {
-  return round === 1 ? "ROUND_1" : round === 2 ? "ROUND_2" : "ROUND_3";
+function statusForRound(round: number): RoomStatus {
+  if (round <= 1) return "ROUND_1";
+  if (round === 2) return "ROUND_2";
+  return "ROUND_3";
 }
 
 export function canHandleEvent(status: RoomStatus, eventType: RoomEventType): boolean {
@@ -89,7 +91,7 @@ export function continueFromScoreboard(state: GameMachineState, nextTotalTurnsIn
     };
   }
 
-  const nextRound = (state.round + 1) as 2 | 3;
+  const nextRound = state.round + 1;
 
   return {
     status: statusForRound(nextRound),

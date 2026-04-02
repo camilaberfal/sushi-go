@@ -31,6 +31,7 @@ export function useGameActions({ roomId, playerId }: UseGameActionsArgs) {
       }
 
       const payload: SelectCardPayload = {
+        playerId,
         cardId,
         useChopsticks,
         timestamp: Date.now(),

@@ -18,7 +18,7 @@ export function TableView({ players }: TableViewProps) {
         <h3 className="font-heading text-2xl text-foreground">Mesa</h3>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           {players.map((player) => {
-            const topCards = player.playedCards.slice(-3);
+            const playedCards = player.playedCards;
             return (
               <div className="rounded-xl border border-border/80 bg-muted/30 p-3" key={player.id}>
                 <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
@@ -31,9 +31,9 @@ export function TableView({ players }: TableViewProps) {
                   <span>Cartas en mano: {player.handCount}</span>
                 </div>
 
-                <div className="flex min-h-28 items-end gap-2">
-                  {topCards.length > 0 ? (
-                    topCards.map((cardId) => (
+                <div className="flex min-h-28 flex-wrap items-end gap-2">
+                  {playedCards.length > 0 ? (
+                    playedCards.map((cardId) => (
                       <Tooltip key={cardId}>
                         <TooltipTrigger>
                           <img alt={cardId} className="h-24 w-16 rounded-md border border-border object-cover" src={getCardAssetFromId(cardId)} />

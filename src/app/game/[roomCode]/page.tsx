@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { HandGrouped } from "@/components/game/hand-grouped";
 import { PlayerHud } from "@/components/game/player-hud";
@@ -25,6 +25,7 @@ import { useRoomStore } from "@/store/room-store";
 type RoomRow = {
   id: string;
   code: string;
+  settings: { total_rounds?: number } | null;
 };
 
 type RoomPlayerRow = {
@@ -51,7 +52,19 @@ function createSeededRng(seed: string): () => number {
   };
 }
 
-function buildBootSnapshot(roomId: string, players: RoomPlayerRow[]): SyncAfterTurnPayload {
+function roundsByPlayers(playerCount: number): number {
+  if (playerCount === 2) return 5;
+  if (playerCount === 3) return 4;
+  return 3;
+}
+
+function roundOptionsByPlayers(playerCount: number): number[] {
+  if (playerCount === 2) return [3, 4, 5];
+  if (playerCount === 3) return [3, 4];
+  return [3];
+}
+
+function buildBootSnapshot(roomId: string, players: RoomPlayerRow[], totalRounds: number): SyncAfterTurnPayload {
   const sorted = [...players].sort((a, b) => a.seat_index - b.seat_index);
   const deck = shuffleDeck(buildFullDeck(), createSeededRng(roomId));
   const { hands } = dealHands(deck, sorted.length as 2 | 3 | 4 | 5);
@@ -63,7 +76,7 @@ function buildBootSnapshot(roomId: string, players: RoomPlayerRow[]): SyncAfterT
       hand: (hands[index] ?? []).map((card) => card.id),
       playedCards: [],
       puddings: 0,
-      scoreByRound: [0, 0, 0],
+      scoreByRound: Array.from({ length: totalRounds }, () => 0),
       presence: player.presence,
     };
   });
@@ -72,6 +85,7 @@ function buildBootSnapshot(roomId: string, players: RoomPlayerRow[]): SyncAfterT
     roomId,
     status: "ROUND_1",
     round: 1,
+    totalRounds,
     turn: 1,
     players: playerMap,
   };
@@ -97,6 +111,7 @@ type GameStageProps = {
 };
 
 function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
+  const router = useRouter();
   useRoomChannel({ roomId, playerId });
 
   const snapshot = useRoomStore((state) => state.snapshot);
@@ -112,13 +127,26 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
   const { clearError, selectCard } = useGameActions({ roomId, playerId });
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [revealOpen, setRevealOpen] = useState(false);
+  const revealOpen = lastReveal.length > 0;
 
   useEffect(() => {
     if (lastReveal.length === 0) return;
     playSfx("reveal");
-    setRevealOpen(true);
   }, [lastReveal]);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    if (snapshot.status !== "WAITING_SCOREBOARD") return;
+    if (snapshot.round < snapshot.totalRounds) return;
+
+    const timer = window.setTimeout(() => {
+      router.push(`/scoreboard/${roomCode}`);
+    }, 900);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [roomCode, router, snapshot]);
 
   const lockInSelection = useCallback(async () => {
     if (!selectedCardId) return;
@@ -228,7 +256,6 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
 
       <RevealLayer
         onDone={() => {
-          setRevealOpen(false);
           setLastReveal([]);
           playSfx("whoosh");
         }}
@@ -264,7 +291,7 @@ export default function GameRoomPage() {
       const auth = await supabase.auth.getUser();
       const currentUserId = auth.data.user?.id ?? null;
 
-      const roomRes = await supabase.from("rooms").select("id, code").eq("code", roomCode).single();
+      const roomRes = await supabase.from("rooms").select("id, code, settings").eq("code", roomCode).single();
       if (roomRes.error || !roomRes.data) {
         setError("No se encontro la sala solicitada.");
         setLoading(false);
@@ -300,11 +327,18 @@ export default function GameRoomPage() {
         return;
       }
 
+      const allowedRounds = roundOptionsByPlayers(roomPlayers.length);
+      const configuredRounds = room.settings?.total_rounds;
+      const totalRounds =
+        typeof configuredRounds === "number" && allowedRounds.includes(configuredRounds)
+          ? configuredRounds
+          : roundsByPlayers(roomPlayers.length);
+
       setRoomId(room.id);
       setPlayers(roomPlayers);
       setPlayerId(resolvedPlayerId);
       setMeta({ roomId: room.id, playerId: resolvedPlayerId });
-      setSnapshot(buildBootSnapshot(room.id, roomPlayers));
+      setSnapshot(buildBootSnapshot(room.id, roomPlayers, totalRounds));
       setLoading(false);
     };
 
