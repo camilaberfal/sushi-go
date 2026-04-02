@@ -8,7 +8,7 @@
 |---|---|
 | Tempura | 14 |
 | Sashimi | 14 |
-| Dumpling | 14 |
+| Gyoza | 14 |
 | Maki Roll (2 íconos) | 12 |
 | Maki Roll (3 íconos) | 8 |
 | Maki Roll (1 ícono) | 6 |
@@ -41,7 +41,11 @@
 
 ### Desarrollo de una Ronda
 
-El juego se desarrolla en **3 rondas**. Cada turno: #OJO: SEGÚN NUESTRAS REGLAS SERÍA TANTAS RONDAS COMO SEAN POSIBLES
+El juego se desarrolla en **tantas rondas como sean posibles**. Es decir:
+- Para 2 jugadores: 5 rondas
+- Para 3 jugadores: 4 rondas
+- Para 4 jugadores: 3 rondas
+- Para 5 jugadores: 3 rondas
 
 1. Todos los jugadores **eligen simultáneamente 1 carta** de su mano y la colocan boca abajo frente a ellos.
 2. Cuando todos han elegido, se **revelan las cartas al mismo tiempo**.
@@ -52,7 +56,7 @@ El juego se desarrolla en **3 rondas**. Cada turno: #OJO: SEGÚN NUESTRAS REGLAS
 
 ### Uso del Wasabi
 
-Si eliges una carta de Nigiri (Squid, Salmon o Egg) y ya tienes un Wasabi frente a ti, ese Nigiri **debe colocarse encima del Wasabi**, triplicando su valor.
+Si eliges una carta de Nigiri (Squid, Salmon o Egg) y ya tienes un Wasabi frente a ti, ese Nigiri **puede colocarse encima del Wasabi**, triplicando su valor.
 
 - Puedes tener múltiples Wasabis frente a ti, pero solo **1 Nigiri por Wasabi**.
 
@@ -61,9 +65,8 @@ Si eliges una carta de Nigiri (Squid, Salmon o Egg) y ya tienes un Wasabi frente
 Si ya tienes una carta de Chopsticks frente a ti, puedes usarla en un turno futuro para **tomar 2 cartas en vez de 1**:
 
 1. Elige tu primera carta normalmente.
-2. Antes de que los demás revelen, di **"¡Sushi Go!"** y toma una segunda carta de tu mano.
-3. Todos revelan sus cartas.
-4. Antes de pasar las manos, **devuelve los Chopsticks a tu mano** para que pase al siguiente jugador.
+2. Todos revelan sus cartas.
+3. Antes de pasar las manos, **devuelve los Chopsticks a tu mano** para que pase al siguiente jugador.
 
 > **Nota:** Puedes tener múltiples Chopsticks, pero solo puedes usar **1 por turno**.
 
@@ -79,12 +82,13 @@ Se puntúan las cartas recolectadas, **excepto los Puddings**, que se guardan fr
 
 ### Maki Rolls
 
-Se suman los íconos de Maki Roll en la parte superior de todas las cartas.
+Se suman los íconos de Maki Roll de todas las cartas de cada jugador.
 
 - **Más íconos:** 6 puntos
 - **Segundo lugar:** 3 puntos
 - En caso de empate, se reparten los puntos en partes iguales (ignorando el resto).
 - Si hay empate en el 1er lugar, no se otorgan puntos de 2do lugar.
+- Si la partida tiene dos jugadores y un jugador no tiene cartas de maki rolls, no cuenta como segundo lugar y no se lleva ningún punto. 
 
 ### Tempura
 
@@ -96,15 +100,15 @@ Se suman los íconos de Maki Roll en la parte superior de todas las cartas.
 
 - **Set de 3 cartas:** 10 puntos
 - **1 o 2 cartas:** 0 puntos
-- Se pueden puntuar múltiples sets, aunque es muy difícil.
+- Se pueden puntuar múltiples sets.
 
-### Dumplings
+### Gyozas
 
 Cuantas más cartas, más puntos:
 
-| Dumplings | 1 | 2 | 3 | 4 | 5+ |
-|---|---|---|---|---|---|
-| Puntos | 1 | 3 | 6 | 10 | 15 |
+| Gyozas | 1 | 2 | 3 | 4  | 5+ |
+|-----------|---|---|---|----|----|
+| Puntos    | 1 | 3 | 6 | 10 | 15 |
 
 ### Nigiri y Wasabi
 
@@ -122,7 +126,7 @@ Cuantas más cartas, más puntos:
 
 ---
 
-## Inicio de una Nueva Ronda
+## Inicio de una Nueva Ronda 
 
 1. Anunciar los puntajes de la ronda anterior.
 2. Descartar las cartas boca arriba junto a la pila de robo (**excepto los Puddings**).
@@ -145,31 +149,7 @@ Después de la tercera ronda, las cartas restantes en la pila de robo se ignoran
 
 ### ¿Quién Gana?
 
-El jugador con **más puntos después de 3 rondas** gana. En caso de empate, gana quien tenga **más cartas de Pudding**.
-
----
-
-## Variantes
-
-### Pasar en Ambas Direcciones
-
-Alternativa para cambiar la interacción entre jugadores:
-
-- **Rondas 1 y 3:** Pasar las manos hacia la **izquierda**.
-- **Ronda 2:** Pasar las manos hacia la **derecha**.
-
-### Variante para 2 Jugadores
-
-Incluye un tercer jugador "ficticio" que alternan entre los dos jugadores:
-
-1. Repartir 3 manos de 9 cartas.
-2. Colocar las cartas del jugador ficticio boca abajo entre ambos como pila.
-3. El jugador que controla al ficticio roba la carta superior de la pila y la agrega a su mano.
-4. Ese jugador elige **1 carta para sí mismo y 1 para el ficticio**.
-5. El oponente juega 1 carta normalmente.
-6. Revelar cartas y cambiar manos. El control del ficticio pasa al otro jugador.
-7. Turnarse el control hasta que se agoten todas las cartas.
-8. Jugar 3 rondas con las reglas normales.
+El jugador con **más puntos después de todas las rondas** gana. En caso de empate, gana quien tenga **más cartas de Pudding**.
 
 ---
 
@@ -180,7 +160,7 @@ Incluye un tercer jugador "ficticio" que alternan entre los dos jugadores:
 | Maki Rolls | 1er lugar: 6 pts / 2do: 3 pts |
 | Tempura | Par de 2: 5 pts |
 | Sashimi | Set de 3: 10 pts |
-| Dumplings | 1/3/6/10/15 pts |
+| Gyozas | 1/3/6/10/15 pts |
 | Squid Nigiri | 3 pts (9 con Wasabi) |
 | Salmon Nigiri | 2 pts (6 con Wasabi) |
 | Egg Nigiri | 1 pt (3 con Wasabi) |
