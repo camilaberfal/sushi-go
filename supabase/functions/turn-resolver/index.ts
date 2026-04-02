@@ -56,6 +56,7 @@ export async function handleTurnResolver(req: Request): Promise<Response> {
       cardId: firstCard.id,
       timestamp: nowMs,
       useChopsticks: false,
+      useWasabi: true,
     });
 
     workingState = result.state;

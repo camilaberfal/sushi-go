@@ -143,7 +143,11 @@ export function useRoomChannel({ roomId, playerId }: UseRoomChannelArgs) {
       const currentSnapshot = getRoomStoreState().snapshot;
       if (!currentSnapshot) return;
 
-      const resolverId = Object.keys(currentSnapshot.players).sort()[0];
+      const resolverCandidates = Object.values(currentSnapshot.players)
+        .filter((player) => player.presence !== "offline")
+        .map((player) => player.id)
+        .sort();
+      const resolverId = resolverCandidates[0] ?? Object.keys(currentSnapshot.players).sort()[0];
       if (resolverId !== playerId) return;
 
       const baseState = resolverStateRef.current ?? toAuthoritativeState(currentSnapshot);
@@ -151,6 +155,7 @@ export function useRoomChannel({ roomId, playerId }: UseRoomChannelArgs) {
         cardId: payload.cardId,
         timestamp: payload.timestamp,
         useChopsticks: payload.useChopsticks,
+        useWasabi: payload.useWasabi,
       });
 
       resolverStateRef.current = result.state;
@@ -190,9 +195,28 @@ export function useRoomChannel({ roomId, playerId }: UseRoomChannelArgs) {
       }
     });
 
+    channel.on("broadcast", { event: "REQUEST_SYNC" } as any, async (packet) => {
+      const p = packet.payload as { playerId: string };
+      const currentSnapshot = getRoomStoreState().snapshot;
+      if (!currentSnapshot) return;
+
+      const resolverCandidates = Object.values(currentSnapshot.players)
+        .filter((player) => player.presence !== "offline")
+        .map((player) => player.id)
+        .sort();
+      
+      const resolverId = resolverCandidates[0] ?? Object.keys(currentSnapshot.players).sort()[0];
+      
+      if (resolverId === playerId) {
+        await broadcastRoomEvent(roomId, "SYNC_AFTER_TURN", currentSnapshot);
+      }
+    });
+
     channel.subscribe((status) => {
       if (status === "SUBSCRIBED") {
         activeRoomChannels.set(roomId, channel);
+        // Pedir sincronización al canal por si nos perdimos el evento mientras estábamos desconectados o cambiando de pestaña
+        broadcastRoomEvent(roomId, "REQUEST_SYNC" as any, { playerId });
       }
 
       if (status === "CHANNEL_ERROR") {

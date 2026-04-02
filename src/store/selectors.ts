@@ -1,5 +1,7 @@
 import { SyncPlayerState } from "@/domain/protocol";
 import { RoomStoreState } from "@/store/room-store";
+import { scoreRoundForPlayers } from "@/domain/scoring";
+import { CardType } from "@/domain/types";
 
 const SPECIAL_CARD_PREFIX = ["wasabi", "chopsticks", "palillos"];
 
@@ -53,12 +55,34 @@ export function selectGroupedHand(playerId: string): (state: RoomStoreState) => 
 
 export function selectProjectedRoundScore(playerId: string): (state: RoomStoreState) => number {
   return (state) => {
-    const player = state.snapshot?.players[playerId];
-    if (!player) return 0;
-    return player.scoreByRound.reduce((sum: number, value: number) => sum + value, 0);
+    if (!state.snapshot) return 0;
+    
+    const playersArr = Object.values(state.snapshot.players);
+    const myIndex = playersArr.findIndex(p => p.id === playerId);
+    if (myIndex === -1) return 0;
+
+    const myBaseScore = playersArr[myIndex].scoreByRound.reduce((sum: number, value: number) => sum + value, 0);
+
+    const cardsInPlayArr = playersArr.map(p => p.playedCards.map(cardId => parseCardTypeFromCardId(cardId) as CardType));
+    const liveScores = scoreRoundForPlayers(cardsInPlayArr);
+
+    return myBaseScore + (liveScores[myIndex]?.totalRoundPoints ?? 0);
   };
 }
 
 export function selectPuddings(playerId: string): (state: RoomStoreState) => number {
-  return (state) => state.snapshot?.players[playerId]?.puddings ?? 0;
+  return (state) => {
+    const basePuddings = state.snapshot?.players[playerId]?.puddings ?? 0;
+    
+    if (!state.snapshot) return basePuddings;
+
+    const playersArr = Object.values(state.snapshot.players);
+    const myIndex = playersArr.findIndex(p => p.id === playerId);
+    if (myIndex === -1) return basePuddings;
+
+    const cardsInPlayArr = playersArr.map(p => p.playedCards.map(cardId => parseCardTypeFromCardId(cardId) as CardType));
+    const liveScores = scoreRoundForPlayers(cardsInPlayArr);
+
+    return basePuddings + (liveScores[myIndex]?.puddingCount ?? 0);
+  };
 }

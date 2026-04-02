@@ -32,8 +32,9 @@ export type AuthoritativePlayerState = {
 };
 
 export type PendingSelection = {
-  cardId: string;
+  cardId: string | [string, string];
   useChopsticks: boolean;
+  useWasabi: boolean;
   timestamp: number;
 };
 
@@ -77,6 +78,50 @@ function invalidAction(playerId: string, reason: InvalidActionReason, message: s
   });
 }
 
+function isNigiriCardType(cardType: string): boolean {
+  return cardType === "nigiri_egg" || cardType === "nigiri_salmon" || cardType === "nigiri_squid";
+}
+
+function firstOpenWasabiIndex(cards: readonly CardInstance[]): number {
+  const openWasabiIndexes: number[] = [];
+
+  cards.forEach((card, index) => {
+    if (card.type === "wasabi") {
+      openWasabiIndexes.push(index);
+      return;
+    }
+
+    if (isNigiriCardType(card.type) && openWasabiIndexes.length > 0) {
+      openWasabiIndexes.shift();
+    }
+  });
+
+  return openWasabiIndexes[0] ?? -1;
+}
+
+function appendSelectionRespectingWasabi(
+  currentPlayedCards: readonly CardInstance[],
+  selectedCards: readonly CardInstance[],
+  useWasabi: boolean
+): CardInstance[] {
+  const next = [...currentPlayedCards];
+
+  for (const selected of selectedCards) {
+    const selectedIsNigiri = isNigiriCardType(selected.type);
+    if (!useWasabi && selectedIsNigiri) {
+      const insertionIndex = firstOpenWasabiIndex(next);
+      if (insertionIndex >= 0) {
+        next.splice(insertionIndex, 0, selected);
+        continue;
+      }
+    }
+
+    next.push(selected);
+  }
+
+  return next;
+}
+
 function resolveTurn(state: AuthoritativeRoomState): EngineResolution {
   const reveals: RevealCardEntry[] = [];
 
@@ -85,7 +130,16 @@ function resolveTurn(state: AuthoritativeRoomState): EngineResolution {
 
   for (const playerId of state.turnOrder) {
     const player = state.players[playerId];
-    const selection = state.pendingSelections[playerId];
+      let selection = state.pendingSelections[playerId];
+
+      if (player.presence === "offline" && !selection && player.hand.length > 0) {
+        selection = {
+          cardId: player.hand[0].id,
+          useChopsticks: false,
+          useWasabi: true,
+          timestamp: 0,
+        };
+      }
 
     if (!player || !selection) {
       return {
@@ -95,8 +149,21 @@ function resolveTurn(state: AuthoritativeRoomState): EngineResolution {
       };
     }
 
-    const selected = player.hand.find((card) => card.id === selection.cardId);
-    if (!selected) {
+    const actionCardIds = Array.isArray(selection.cardId) ? selection.cardId : [selection.cardId];
+    
+    const selectedCards = [];
+    let missingCard = false;
+
+    for (const cid of actionCardIds) {
+      const selected = player.hand.find((card) => card.id === cid);
+      if (!selected) {
+        missingCard = true;
+        break;
+      }
+      selectedCards.push(selected);
+    }
+
+    if (missingCard) {
       return {
         state,
         events: [invalidAction(playerId, "CARD_NOT_IN_HAND", "Selected card no longer exists in player hand.")],
@@ -104,24 +171,35 @@ function resolveTurn(state: AuthoritativeRoomState): EngineResolution {
       };
     }
 
-    const nextHand = removeSelectedCardFromHand(player.hand, selection.cardId);
+    let nextHand = player.hand.filter((card) => !actionCardIds.includes(card.id));
+    let nextPlayedCards = appendSelectionRespectingWasabi(player.playedCards, selectedCards, selection.useWasabi);
+
+    if (selection.useChopsticks) {
+      const chopIndex = nextPlayedCards.findIndex(c => c.type === "chopsticks");
+      if (chopIndex !== -1) {
+        nextHand.push(nextPlayedCards.splice(chopIndex, 1)[0]);
+      }
+    }
+
     handsAfterPlay.push(nextHand);
 
     nextPlayers[playerId] = {
       ...player,
       hand: nextHand,
-      playedCards: [...player.playedCards, selected],
+      playedCards: nextPlayedCards,
       availableChopsticks: selection.useChopsticks
         ? Math.max(0, player.availableChopsticks - 1)
         : player.availableChopsticks,
     };
 
-    reveals.push({
-      playerId,
-      cardId: selected.id,
-      cardType: selected.type as CardType,
-      useChopsticks: selection.useChopsticks,
-    });
+    for (const selected of selectedCards) {
+      reveals.push({
+        playerId,
+        cardId: selected.id,
+        cardType: selected.type as CardType,
+        useChopsticks: selection.useChopsticks,
+      });
+    }
   }
 
   const passedHands = passHandsToLeft(handsAfterPlay);
@@ -238,12 +316,17 @@ export function submitSelectCard(
       [playerId]: {
         cardId: payload.cardId,
         useChopsticks: payload.useChopsticks,
+          useWasabi: payload.useWasabi ?? false,
         timestamp: payload.timestamp,
       },
     },
   };
 
-  if (Object.keys(nextState.pendingSelections).length < state.turnOrder.length) {
+    const activePlayers = state.turnOrder.filter(
+      (id) => state.players[id]?.presence !== "offline"
+    );
+
+    if (Object.keys(nextState.pendingSelections).length < activePlayers.length) {
     return {
       state: nextState,
       events: [],

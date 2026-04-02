@@ -20,7 +20,7 @@ export function RoundBreakdown({ rounds }: RoundBreakdownProps) {
   if (rounds.length === 0) {
     return (
       <Card className="p-4">
-        <p className="text-sm text-muted-foreground">No hay resumen de rondas disponible todavía.</p>
+        <p className="text-base text-muted-foreground">No hay resumen de rondas disponible todavía.</p>
       </Card>
     );
   }
@@ -31,7 +31,7 @@ export function RoundBreakdown({ rounds }: RoundBreakdownProps) {
         <AccordionItem key={round.round} value={`round-${round.round}`}>
           <AccordionTrigger value={`round-${round.round}`}>
             <div className="flex w-full items-center justify-between pr-4">
-              <span className="font-heading text-xl">Ronda {round.round}</span>
+              <span className="font-heading text-2xl">Ronda {round.round}</span>
               <Badge variant="secondary">{round.players.length} jugadores</Badge>
             </div>
           </AccordionTrigger>
@@ -44,7 +44,7 @@ export function RoundBreakdown({ rounds }: RoundBreakdownProps) {
                       <p className="font-semibold">{player.displayName}</p>
                       <Badge>{player.points} pts</Badge>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <div className="mt-2 flex flex-wrap gap-2 text-sm text-muted-foreground">
                       {Object.entries(player.byCategory).map(([category, value]) => (
                         <span className="rounded-md bg-muted/60 px-2 py-1" key={`${player.playerId}-${category}`}>
                           {category}: {value}

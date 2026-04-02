@@ -24,8 +24,15 @@ export function validateSelectCardPayload(payload: unknown): ValidationResult {
 
   const candidate = payload as Partial<SelectCardPayload>;
 
-  if (typeof candidate.cardId !== "string" || candidate.cardId.trim().length === 0) {
-    return { ok: false, reason: "MISSING_CARD", message: "cardId is required." };
+  if (
+    typeof candidate.cardId !== "string" &&
+    !Array.isArray(candidate.cardId)
+  ) {
+    return { ok: false, reason: "MISSING_CARD", message: "cardId is required and must be a string or array of strings." };
+  }
+
+  if (candidate.useChopsticks && (!Array.isArray(candidate.cardId) || candidate.cardId.length !== 2)) {
+     return { ok: false, reason: "INVALID_PAYLOAD", message: "With chopsticks you must select exactly two cards." };
   }
 
   if (typeof candidate.timestamp !== "number" || !Number.isFinite(candidate.timestamp) || candidate.timestamp <= 0) {
@@ -41,6 +48,14 @@ export function validateSelectCardPayload(payload: unknown): ValidationResult {
       ok: false,
       reason: "INVALID_PAYLOAD",
       message: "useChopsticks must be boolean.",
+    };
+  }
+
+  if (candidate.useWasabi !== undefined && typeof candidate.useWasabi !== "boolean") {
+    return {
+      ok: false,
+      reason: "INVALID_PAYLOAD",
+      message: "useWasabi must be boolean when provided.",
     };
   }
 
@@ -61,12 +76,15 @@ export function validateSelectCardInContext(args: {
     };
   }
 
-  if (!args.handCardIds.includes(args.payload.cardId)) {
-    return {
-      ok: false,
-      reason: "MISSING_CARD",
-      message: "Selected card is not present in player hand.",
-    };
+  const cardsToCheck = Array.isArray(args.payload.cardId) ? args.payload.cardId : [args.payload.cardId];
+  for (const cid of cardsToCheck) {
+    if (!args.handCardIds.includes(cid)) {
+      return {
+        ok: false,
+        reason: "MISSING_CARD",
+        message: "One or more selected cards are not in the player's hand.",
+      };
+    }
   }
 
   if (args.payload.useChopsticks && args.availableChopsticks <= 0) {

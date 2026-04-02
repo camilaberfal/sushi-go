@@ -36,13 +36,13 @@ export function RevealLayer({ open, reveals, onDone }: RevealLayerProps) {
 
   return (
     <div className={`pointer-events-none fixed inset-0 z-40 flex animate-[reveal-fade_${REVEAL_FADE_MS}ms_ease-out] flex-col items-center justify-center bg-black/50 backdrop-blur-sm`}>
-      <p className={`mb-6 animate-[reveal-title_${REVEAL_TITLE_MS}ms_ease-out] font-heading text-5xl text-accent`}>RESULTADO</p>
+      <p className={`mb-7 animate-[reveal-title_${REVEAL_TITLE_MS}ms_ease-out] font-heading text-6xl text-accent`}>RESULTADO</p>
 
-      <div className="flex flex-wrap items-center justify-center gap-3 px-4">
+      <div className="flex flex-wrap items-center justify-center gap-4 px-4">
         {reveals.map((entry, index) => (
           <img
             alt={entry.cardId}
-            className={`h-36 w-24 animate-[flip-in-hor_${CARD_FLIP_MS}ms_ease-out] rounded-xl border-2 border-accent/70 bg-white object-cover shadow-lg`}
+            className={`h-44 w-[7.5rem] animate-[flip-in-hor_${CARD_FLIP_MS}ms_ease-out] rounded-xl border-2 border-accent/70 bg-white object-cover shadow-lg`}
             key={`${entry.playerId}:${entry.cardId}`}
             src={getCardAssetFromId(entry.cardId)}
             style={{ animationDelay: `${index * CARD_STAGGER_MS}ms`, animationFillMode: "both" }}

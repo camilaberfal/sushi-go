@@ -18,14 +18,15 @@ export function useGameActions({ roomId, playerId }: UseGameActionsArgs) {
   const setWaitingForPlayers = useRoomStore((state) => state.setWaitingForPlayers);
 
   const selectCard = useCallback(
-    async (cardId: string, useChopsticks: boolean) => {
+    async (cardId: string | [string, string], useChopsticks: boolean, useWasabi = false) => {
       const player = snapshot?.players[playerId];
       if (!player) {
         setLastError("No hay estado de jugador para esta sala.");
         return false;
       }
 
-      if (!player.hand.includes(cardId)) {
+      const cardsToCheck = Array.isArray(cardId) ? cardId : [cardId];
+      if (!cardsToCheck.every((id) => player.hand.includes(id))) {
         setLastError("La carta seleccionada no existe en tu mano.");
         return false;
       }
@@ -34,6 +35,7 @@ export function useGameActions({ roomId, playerId }: UseGameActionsArgs) {
         playerId,
         cardId,
         useChopsticks,
+        useWasabi,
         timestamp: Date.now(),
       };
 

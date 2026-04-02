@@ -127,6 +127,19 @@ export default function LobbyPage() {
     router.push(`/game/${room.code}`);
   };
 
+  const handleLeaveLobby = async () => {
+    if (!room?.id) {
+      router.push("/");
+      return;
+    }
+    const supabase = getSupabaseBrowserClient();
+    const { data: auth } = await supabase.auth.getUser();
+    if (auth.user) {
+      await supabase.from("room_players").delete().eq("room_id", room.id).eq("user_id", auth.user.id);
+    }
+    router.push("/");
+  };
+
   if (loading) {
     return <main className="mx-auto flex min-h-screen w-full max-w-5xl items-center justify-center px-4">Cargando lobby...</main>;
   }
@@ -166,11 +179,19 @@ export default function LobbyPage() {
                   <Button className="flex-1" disabled={players.length < 2} onClick={startMatch}>
                     Iniciar partida
                   </Button>
+                  <Button variant="outline" onClick={handleLeaveLobby}>
+                    Abandonar sala
+                  </Button>
                 </div>
               ) : (
-                <Card className="border border-secondary/40 bg-secondary/10 p-3 text-sm text-secondary-foreground">
-                  Esperando a que el host inicie la partida.
-                </Card>
+                <div className="flex flex-col gap-2">
+                  <Card className="border border-secondary/40 bg-secondary/10 p-3 text-sm text-secondary-foreground text-center">
+                    Esperando a que el host inicie la partida.
+                  </Card>
+                  <Button variant="outline" onClick={handleLeaveLobby}>
+                    Abandonar sala
+                  </Button>
+                </div>
               )}
             </div>
           </Card>

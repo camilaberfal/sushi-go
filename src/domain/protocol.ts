@@ -6,9 +6,10 @@ export type PlayerPresence = "online" | "offline" | "bot";
 
 export type SelectCardPayload = {
   playerId?: string;
-  cardId: string;
+  cardId: string | [string, string];
   timestamp: number;
   useChopsticks: boolean;
+  useWasabi?: boolean;
 };
 
 export type InvalidActionReason =
