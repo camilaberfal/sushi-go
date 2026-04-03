@@ -187,6 +187,17 @@ function buildBootSnapshot(roomId: string, players: RoomPlayerRow[], totalRounds
     totalRounds,
     turn: 1,
     players: playerMap,
+    analytics: {
+      fastestPlayMs: 0,
+      fastestPlayer: "",
+      fastestCard: "nigiri_salmon",
+      slowestPlayMs: 0,
+      slowestPlayer: "",
+      slowestCard: "tempura",
+      cardPlayCount: {},
+      totalPointsByCard: {},
+      turnStartedAtMs: Date.now(),
+    },
   };
 }
 

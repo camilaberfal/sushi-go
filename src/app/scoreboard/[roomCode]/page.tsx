@@ -10,7 +10,8 @@ import sashimiImg from "@/app/assets/illustrations/sashimi-illustration.png";
 import tempuraImg from "@/app/assets/illustrations/tempura-illustration.png";
 import wasabiImg from "@/app/assets/illustrations/wasabi-illustration.png";
 import nigiriSalmonImg from "@/app/assets/illustrations/nigiri-salmon-illustration.png";
-import { StaticImageData } from "next/image";
+import Image, { StaticImageData } from "next/image";
+import { motion } from "framer-motion";
 
 import { Achievement } from "@/components/scoreboard/AchievementBadge";
 import { FinalScoreboard } from "@/components/scoreboard/FinalScoreboard";
@@ -44,6 +45,72 @@ type LoadedState = {
   history: MatchHistoryRow | null;
   roundSummaries: RoundSummaryRow[];
 };
+
+const LOADING_SHOWCASE: Array<{ id: string; image: StaticImageData; tint: string }> = [
+  { id: "nigiri", image: nigiriSalmonImg, tint: "from-rose-500/25 to-transparent" },
+  { id: "maki", image: makisX3Img, tint: "from-amber-400/25 to-transparent" },
+  { id: "wasabi", image: wasabiImg, tint: "from-emerald-400/25 to-transparent" },
+];
+
+function LoadingFinalScoreboard() {
+  return (
+    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#130818] px-4 text-white">
+      <div className="pointer-events-none absolute inset-0">
+        <motion.div
+          className="absolute -left-20 top-10 h-72 w-72 rounded-full bg-rose-500/20 blur-[90px]"
+          animate={{ x: [0, 45, 0], y: [0, -10, 0] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute right-0 top-1/3 h-80 w-80 rounded-full bg-cyan-400/20 blur-[100px]"
+          animate={{ x: [0, -50, 0], y: [0, 20, 0] }}
+          transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-amber-400/15 blur-[110px]"
+          animate={{ y: [0, -35, 0] }}
+          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </div>
+
+      <div className="relative z-10 w-full max-w-3xl rounded-3xl border border-white/10 bg-black/35 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+        <motion.h1
+          className="text-center font-heading text-3xl font-black uppercase tracking-[0.18em] text-amber-300"
+          initial={{ opacity: 0.6 }}
+          animate={{ opacity: [0.55, 1, 0.55] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        >
+          Cargando Scoreboard Final
+        </motion.h1>
+
+        <p className="mt-2 text-center text-sm text-white/75">Preparando podio, logros y reporte forense...</p>
+
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {LOADING_SHOWCASE.map((item, index) => (
+            <motion.div
+              key={item.id}
+              className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#1a0e22] p-4"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: [0.55, 1, 0.55], y: [8, -4, 8] }}
+              transition={{ delay: index * 0.12, duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <div className={`absolute inset-0 bg-gradient-to-br ${item.tint}`} />
+              <div className="relative flex h-24 items-center justify-center">
+                <Image src={item.image} alt="" className="h-20 w-20 object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,0.7)]" />
+              </div>
+              <motion.div
+                className="mt-3 h-2 rounded-full bg-white/10"
+                initial={{ scaleX: 0.1, originX: 0 }}
+                animate={{ scaleX: [0.15, 1, 0.15] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              />
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </main>
+  );
+}
 
 function hydrateFromSnapshot(snapshot: SyncAfterTurnPayload, nameByPlayerId: Record<string, string> = {}): LoadedState {
   const syntheticGame: GameRow = {
@@ -169,7 +236,7 @@ function toPodiumPlayers(players: GamePlayerRow[]): PlayerStat[] {
 }
 
 function readHighlightMetrics(highlights: Record<string, unknown>, players: GamePlayerRow[]): HighlightStats {
-  const defaultPlayer = players[0]?.display_name ?? "Jugador";
+  const defaultPlayer = players[0]?.display_name ?? "Sin datos";
 
   const fastestName =
     stringFromUnknown(highlights.fastestPlayer) ||
@@ -197,15 +264,10 @@ function readHighlightMetrics(highlights: Record<string, unknown>, players: Game
   const mostPlayedCount =
     numberFromUnknown(highlights.mostPlayedCount, 0) ||
     numberFromUnknown(highlights.most_played_count, 0) ||
-    1;
+    0;
 
-  const fallbackBestRoundByPlayer = players
-    .map((player) => ({
-      playerName: player.display_name,
-      bestRoundPoints: Math.max(...(player.score_by_round ?? [0])),
-    }))
-    .sort((a, b) => b.bestRoundPoints - a.bestRoundPoints)[0] ?? { playerName: defaultPlayer, bestRoundPoints: 0 };
-
+  // Do NOT fall back to a player's best round total for "most profitable card";
+  // that can produce inflated / misleading values (e.g. whole-round totals).
   const bestPointsCard =
     stringFromUnknown(highlights.cardMostPoints) ||
     stringFromUnknown(highlights.mostProfitableCard) ||
@@ -214,28 +276,27 @@ function readHighlightMetrics(highlights: Record<string, unknown>, players: Game
     stringFromUnknown(highlights.cardMostPointsPlayer) ||
     stringFromUnknown(highlights.mostProfitableCardPlayer) ||
     stringFromUnknown(highlights.card_most_points_player) ||
-    fallbackBestRoundByPlayer.playerName ||
     defaultPlayer;
   const bestPointsValue =
     numberFromUnknown(highlights.totalPointsByBestCard, 0) ||
     numberFromUnknown(highlights.cardMostPointsValue, 0) ||
     numberFromUnknown(highlights.total_points_by_best_card, 0) ||
-    fallbackBestRoundByPlayer.bestRoundPoints;
+    0;
 
   return {
     fastestPlay: {
       playerName: fastestName,
-      fastestTime: numberFromUnknown(highlights.fastestTimeSeconds, 0) || numberFromUnknown(highlights.fastest_time_seconds, 0) || 1.2,
+      fastestTime: numberFromUnknown(highlights.fastestTimeSeconds, 0) || numberFromUnknown(highlights.fastest_time_seconds, 0) || 0,
       cardId: cardKey(fastestCard),
     },
     slowestPlay: {
       playerName: slowestName,
-      slowestTime: numberFromUnknown(highlights.slowestTimeSeconds, 0) || numberFromUnknown(highlights.slowest_time_seconds, 0) || 5.6,
+      slowestTime: numberFromUnknown(highlights.slowestTimeSeconds, 0) || numberFromUnknown(highlights.slowest_time_seconds, 0) || 0,
       cardId: cardKey(slowestCard),
     },
     mostPlayedCard: {
       cardId: cardKey(mostPlayedCard),
-      count: Math.max(1, Math.round(mostPlayedCount)),
+      count: Math.max(0, Math.round(mostPlayedCount)),
     },
     mostProfitableCard: {
       cardId: cardKey(bestPointsCard),
@@ -483,7 +544,7 @@ export default function ScoreboardPage() {
   }, [roomCode, state]);
 
   if (loading) {
-    return <main className="grid min-h-screen place-items-center bg-[#1a0a2e] text-white">Cargando scoreboard final...</main>;
+    return <LoadingFinalScoreboard />;
   }
 
   if (!isRoomCodeValid || error || !data) {

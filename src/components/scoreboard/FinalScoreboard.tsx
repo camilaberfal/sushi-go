@@ -23,6 +23,21 @@ interface FinalScoreboardProps {
 const FANFARE_DATA_URI =
   "data:audio/wav;base64,UklGRlQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTAAAAAAAP///wAA//8AAP//AAD//wAA";
 
+function localizeStatus(statusText: string): string {
+  const normalized = statusText.trim().toUpperCase();
+
+  if (normalized === "FINISHED" || normalized === "FINAL_PODIUM") return "Partida terminada";
+  if (normalized === "WAITING_SCOREBOARD") return "Esperando scoreboard";
+  if (normalized === "LOBBY") return "Lobby";
+
+  if (normalized.startsWith("ROUND_")) {
+    const round = normalized.split("_")[1] ?? "";
+    return round ? `Ronda ${round}` : "En partida";
+  }
+
+  return "Partida terminada";
+}
+
 export function FinalScoreboard({
   roomCode,
   statusText,
@@ -52,7 +67,8 @@ export function FinalScoreboard({
   }, [shouldReduceMotion]);
 
   const noMotion = shouldReduceMotion ?? false;
-  const durationText = totalDurationMs ? `${Math.floor(totalDurationMs / 1000)}s` : "N/A";
+  const durationText = typeof totalDurationMs === "number" && totalDurationMs > 0 ? `${Math.floor(totalDurationMs / 1000)}s` : null;
+  const localizedStatus = localizeStatus(statusText);
 
   return (
     <motion.main
@@ -84,13 +100,15 @@ export function FinalScoreboard({
                <h1 className="font-heading text-3xl md:text-5xl font-black text-[#fbbf24] tracking-widest uppercase shadow-black drop-shadow-lg">Victoria Final</h1>
                <div className="flex items-center gap-2 mt-1">
                  <span className="font-bold text-[#8a4c5e] text-xs md:text-sm uppercase tracking-wider bg-black/40 px-2 py-0.5 rounded shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]">SALA {roomCode}</span>
-                 <span className="font-bold text-[#4a2a35] text-xs md:text-sm uppercase tracking-wider">{durationText}</span>
+                 {durationText ? (
+                   <span className="font-bold text-[#4a2a35] text-xs md:text-sm uppercase tracking-wider">{durationText}</span>
+                 ) : null}
                </div>
              </div>
           </div>
           
           <div className="shrink-0 bg-[#000000] p-1.5 rounded-xl shadow-[inset_0_4px_6px_rgba(0,0,0,1)] border border-[#251319]">
-             <span className="text-sm md:text-base font-black text-[#fbbf24] px-4 py-2 block uppercase tracking-wider drop-shadow-md">PARTIDA {statusText}</span>
+             <span className="text-sm md:text-base font-black text-[#fbbf24] px-4 py-2 block uppercase tracking-wider drop-shadow-md">{localizedStatus}</span>
           </div>
         </motion.header>
 

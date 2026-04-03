@@ -4,6 +4,21 @@ export type RoomStatus = "LOBBY" | "ROUND_1" | "ROUND_2" | "ROUND_3" | "WAITING_
 
 export type PlayerPresence = "online" | "offline" | "bot";
 
+export type MatchAnalytics = {
+  fastestPlayMs: number;
+  fastestPlayer: string;
+  fastestCard: string;
+
+  slowestPlayMs: number;
+  slowestPlayer: string;
+  slowestCard: string;
+
+  cardPlayCount: Record<string, number>;
+  totalPointsByCard: Record<string, number>;
+
+  turnStartedAtMs: number;
+};
+
 export type SelectCardPayload = {
   playerId?: string;
   cardId: string | [string, string];
@@ -48,6 +63,7 @@ export type SyncAfterTurnPayload = {
   totalRounds: number;
   turn: number;
   players: Record<string, SyncPlayerState>;
+  analytics: MatchAnalytics;
 };
 
 export type RoomEventMap = {

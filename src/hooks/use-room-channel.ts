@@ -69,6 +69,17 @@ function buildNextRoundSnapshot(snapshot: SyncAfterTurnPayload): SyncAfterTurnPa
         ];
       })
     ),
+    analytics: {
+      fastestPlayMs: 0,
+      fastestPlayer: "",
+      fastestCard: "nigiri_salmon",
+      slowestPlayMs: 0,
+      slowestPlayer: "",
+      slowestCard: "tempura",
+      cardPlayCount: {},
+      totalPointsByCard: {},
+      turnStartedAtMs: Date.now(),
+    },
   };
 }
 

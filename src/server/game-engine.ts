@@ -261,6 +261,17 @@ function resolveTurn(state: AuthoritativeRoomState): EngineResolution {
       players: Object.fromEntries(
         Object.entries(nextState.players).map(([playerId, player]) => [playerId, syncPlayerState(player)])
       ),
+        analytics: {
+          fastestPlayMs: 0,
+          fastestPlayer: "",
+          fastestCard: "nigiri_salmon",
+          slowestPlayMs: 0,
+          slowestPlayer: "",
+          slowestCard: "tempura",
+          cardPlayCount: {},
+          totalPointsByCard: {},
+          turnStartedAtMs: Date.now(),
+        },
     }),
   ];
 
