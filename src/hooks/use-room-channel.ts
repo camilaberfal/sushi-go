@@ -64,7 +64,7 @@ function buildNextRoundSnapshot(snapshot: SyncAfterTurnPayload): SyncAfterTurnPa
           {
             ...current,
             hand: (hands[index] ?? []).map((card) => card.id),
-            playedCards: [],
+            playedCards: current.playedCards.filter(cardId => cardId.includes("pudding")),
           },
         ];
       })
@@ -103,6 +103,34 @@ function toAuthoritativeState(snapshot: SyncAfterTurnPayload): AuthoritativeRoom
     pendingSelections: {},
     gracePeriodMs: 30_000,
   };
+}
+
+function statusRank(status: SyncAfterTurnPayload["status"]): number {
+  if (status === "LOBBY") return 0;
+  if (status === "ROUND_1" || status === "ROUND_2" || status === "ROUND_3") return 1;
+  if (status === "WAITING_SCOREBOARD") return 2;
+  return 3;
+}
+
+function shouldApplySnapshot(current: SyncAfterTurnPayload | null, incoming: SyncAfterTurnPayload): boolean {
+  if (!current) return true;
+  if (incoming.round !== current.round) return incoming.round > current.round;
+  if (incoming.turn !== current.turn) return incoming.turn > current.turn;
+  if (incoming.status !== current.status) return statusRank(incoming.status) >= statusRank(current.status);
+
+  // Mismo round/turn/status: no aceptar snapshots que "retroceden" cartas ya jugadas.
+  for (const [playerId, currentPlayer] of Object.entries(current.players)) {
+    const incomingPlayer = incoming.players[playerId];
+    if (!incomingPlayer) continue;
+
+    const incomingPlayed = new Set(incomingPlayer.playedCards);
+    const losesPlayedCard = currentPlayer.playedCards.some((cardId) => !incomingPlayed.has(cardId));
+    if (losesPlayedCard) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function useRoomChannel({ roomId, playerId }: UseRoomChannelArgs) {
@@ -177,9 +205,27 @@ export function useRoomChannel({ roomId, playerId }: UseRoomChannelArgs) {
     });
 
     bind("SYNC_AFTER_TURN", (payload) => {
+      const currentStore = getRoomStoreState();
+      const currentSnapshot = currentStore.snapshot;
+      if (!shouldApplySnapshot(currentSnapshot, payload)) {
+        return;
+      }
+
       setSnapshot(payload);
-      setPendingSelection(null);
-      setWaitingForPlayers(false);
+
+      const isSameProgressPoint =
+        currentSnapshot &&
+        payload.round === currentSnapshot.round &&
+        payload.turn === currentSnapshot.turn &&
+        payload.status === currentSnapshot.status;
+
+      // No limpiar pending/waiting con syncs del mismo punto de progreso,
+      // porque pueden ser reenvíos REQUEST_SYNC y borrar la carta optimista.
+      if (!isSameProgressPoint) {
+        setPendingSelection(null);
+        setWaitingForPlayers(false);
+      }
+
       resolverStateRef.current = toAuthoritativeState(payload);
     });
 

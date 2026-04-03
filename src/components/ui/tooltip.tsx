@@ -19,7 +19,8 @@ export function TooltipContent({ className, ...props }: React.HTMLAttributes<HTM
     <span
       role="tooltip"
       className={cn(
-        "pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden -translate-x-1/2 rounded-md bg-foreground px-2 py-1 text-xs text-background group-hover:block",
+        // Use a high-contrast default so tooltips are readable in all themes.
+        "pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden -translate-x-1/2 rounded-md bg-black/80 px-2 py-1 text-xs text-white group-hover:block",
         className
       )}
       {...props}

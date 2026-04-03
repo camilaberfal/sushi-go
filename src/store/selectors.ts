@@ -72,17 +72,15 @@ export function selectProjectedRoundScore(playerId: string): (state: RoomStoreSt
 
 export function selectPuddings(playerId: string): (state: RoomStoreState) => number {
   return (state) => {
-    const basePuddings = state.snapshot?.players[playerId]?.puddings ?? 0;
-    
-    if (!state.snapshot) return basePuddings;
+    if (!state.snapshot) return 0;
 
     const playersArr = Object.values(state.snapshot.players);
     const myIndex = playersArr.findIndex(p => p.id === playerId);
-    if (myIndex === -1) return basePuddings;
+    if (myIndex === -1) return 0;
 
     const cardsInPlayArr = playersArr.map(p => p.playedCards.map(cardId => parseCardTypeFromCardId(cardId) as CardType));
     const liveScores = scoreRoundForPlayers(cardsInPlayArr);
 
-    return basePuddings + (liveScores[myIndex]?.puddingCount ?? 0);
+    return liveScores[myIndex]?.puddingCount ?? 0;
   };
 }

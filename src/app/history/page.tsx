@@ -123,7 +123,7 @@ export default function HistoryPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto min-h-screen w-full max-w-6xl space-y-4 px-4 py-10">
+      <main className="mx-auto min-h-screen w-full max-w-6xl space-y-4 px-4 py-10 text-white">
         <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-80 rounded-2xl" />
       </main>
@@ -133,23 +133,27 @@ export default function HistoryPage() {
   if (error) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-4 py-10">
-        <Card className="w-full p-6 text-destructive">{error}</Card>
+        <Card className="w-full border border-white/15 bg-[#120912]/95 p-6 text-red-300">{error}</Card>
       </main>
     );
   }
 
   return (
-    <main className="relative mx-auto min-h-screen w-full max-w-6xl px-4 py-10">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_15%,rgba(72,199,195,0.2),transparent_38%),radial-gradient(circle_at_70%_10%,rgba(255,107,95,0.2),transparent_36%),radial-gradient(circle_at_50%_90%,rgba(255,210,103,0.2),transparent_40%)]" />
+    <main className="relative mx-auto min-h-screen w-full max-w-6xl bg-gradient-to-b from-[#190a2d] via-[#10071c] to-[#09040f] px-4 py-10 text-white">
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute left-[10%] top-[10%] h-[320px] w-[320px] rounded-full bg-cyan-500/20 blur-[120px]" />
+        <div className="absolute right-[8%] top-[14%] h-[280px] w-[280px] rounded-full bg-rose-500/20 blur-[110px]" />
+        <div className="absolute bottom-[8%] left-[42%] h-[360px] w-[360px] rounded-full bg-amber-400/12 blur-[130px]" />
+      </div>
 
-      <Card className="border-2 border-border/80 bg-card/95 p-5">
+      <Card className="border border-white/15 bg-[#130915]/90 p-5 shadow-[0_24px_50px_rgba(0,0,0,0.6)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="font-heading text-4xl">Historial de partidas</h1>
           <Badge variant="secondary">{matches.length} partidas</Badge>
         </div>
       </Card>
 
-      <Card className="mt-5 border border-border/80 bg-card/95 p-4">
+      <Card className="mt-5 border border-white/15 bg-[#130915]/90 p-4 shadow-[0_24px_50px_rgba(0,0,0,0.6)] backdrop-blur-xl">
         <ScrollArea className="max-h-[70vh]">
           <MatchList matches={matches} />
         </ScrollArea>

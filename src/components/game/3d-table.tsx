@@ -17,29 +17,90 @@ type TableView3DProps = {
   currentPlayerId: string;
   canDropCard?: boolean;
   draggingCardId?: string | null;
+  optimisticWasabiNigiriId?: string | null;
   onDropCard?: (cardId: string, useWasabi: boolean) => void;
   onClickPlayedCard?: (playerId: string, cardId: string) => void;
 };
 
 const formatCardName = (id: string) => id.replace(/[\d_-]+/g, ' ').trim().toUpperCase();
 
-export function TableView3D({ players, currentPlayerId, canDropCard, draggingCardId, onDropCard, onClickPlayedCard }: TableView3DProps) {
+export function TableView3D({
+  players,
+  currentPlayerId,
+  canDropCard,
+  draggingCardId,
+  optimisticWasabiNigiriId,
+  onDropCard,
+  onClickPlayedCard,
+}: TableView3DProps) {
   const [hoveredWasabiId, setHoveredWasabiId] = useState<string | null>(null);
-  const [recentDroppedNigiriId, setRecentDroppedNigiriId] = useState<string | null>(null);
-  const [recentDroppedWasabiId, setRecentDroppedWasabiId] = useState<string | null>(null);
-  const dropAnimTimerRef = useRef<number | null>(null);
+  const [optimisticStackedDrop, setOptimisticStackedDrop] = useState<{ nigiriId: string } | null>(null);
   const wasabiSlotRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const isNigiriDragging = Boolean(draggingCardId && draggingCardId.includes("nigiri_"));
+  const isNigiriCardId = (cardId: string) => cardId.includes("nigiri_");
+
+  const findClosestWasabiSlotId = (cursorX: number, cursorY: number): string | null => {
+    const SNAP_PADDING_PX = 52;
+    let closestId: string | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (const [slotId, element] of Object.entries(wasabiSlotRefs.current)) {
+      if (!element) continue;
+      const rect = element.getBoundingClientRect();
+      const expandedLeft = rect.left - SNAP_PADDING_PX;
+      const expandedRight = rect.right + SNAP_PADDING_PX;
+      const expandedTop = rect.top - SNAP_PADDING_PX;
+      const expandedBottom = rect.bottom + SNAP_PADDING_PX;
+
+      const insideExpanded =
+        cursorX >= expandedLeft &&
+        cursorX <= expandedRight &&
+        cursorY >= expandedTop &&
+        cursorY <= expandedBottom;
+
+      if (!insideExpanded) continue;
+
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const distance = Math.hypot(cursorX - centerX, cursorY - centerY);
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestId = slotId;
+      }
+    }
+
+    return closestId;
+  };
 
   useEffect(() => {
     return () => {
-      if (dropAnimTimerRef.current) {
-        window.clearTimeout(dropAnimTimerRef.current);
-      }
       wasabiSlotRefs.current = {};
     };
   }, []);
+
+  useEffect(() => {
+    if (!optimisticStackedDrop) return;
+
+    let timeoutId: NodeJS.Timeout | null = null;
+    const myCards = players.find((player) => player.id === currentPlayerId)?.playedCards ?? [];
+    const cardAlreadyInTable = myCards.includes(optimisticStackedDrop.nigiriId);
+    
+    if (cardAlreadyInTable) {
+      setOptimisticStackedDrop(null);
+    } else {
+      timeoutId = setTimeout(() => {
+        setOptimisticStackedDrop(null);
+      }, 8000); // 8-second grace period for server roundtrip
+    }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [players, optimisticStackedDrop, currentPlayerId]);
+
+  const activeOptimisticNigiriId = optimisticWasabiNigiriId ?? optimisticStackedDrop?.nigiriId ?? null;
 
   return (
     <div
@@ -72,38 +133,7 @@ export function TableView3D({ players, currentPlayerId, canDropCard, draggingCar
               return;
             }
 
-            const SNAP_PADDING_PX = 52;
-            const cursorX = event.clientX;
-            const cursorY = event.clientY;
-
-            let closestId: string | null = null;
-            let closestDistance = Number.POSITIVE_INFINITY;
-
-            for (const [slotId, element] of Object.entries(wasabiSlotRefs.current)) {
-              if (!element) continue;
-              const rect = element.getBoundingClientRect();
-              const expandedLeft = rect.left - SNAP_PADDING_PX;
-              const expandedRight = rect.right + SNAP_PADDING_PX;
-              const expandedTop = rect.top - SNAP_PADDING_PX;
-              const expandedBottom = rect.bottom + SNAP_PADDING_PX;
-
-              const insideExpanded =
-                cursorX >= expandedLeft &&
-                cursorX <= expandedRight &&
-                cursorY >= expandedTop &&
-                cursorY <= expandedBottom;
-
-              if (!insideExpanded) continue;
-
-              const centerX = rect.left + rect.width / 2;
-              const centerY = rect.top + rect.height / 2;
-              const distance = Math.hypot(cursorX - centerX, cursorY - centerY);
-
-              if (distance < closestDistance) {
-                closestDistance = distance;
-                closestId = slotId;
-              }
-            }
+            const closestId = findClosestWasabiSlotId(event.clientX, event.clientY);
 
             if (hoveredWasabiId !== closestId) {
               setHoveredWasabiId(closestId);
@@ -115,17 +145,10 @@ export function TableView3D({ players, currentPlayerId, canDropCard, draggingCar
             const cardId = event.dataTransfer.getData("text/plain");
             if (!cardId) return;
 
-            const droppedOnNearbyWasabi = Boolean(isNigiriDragging && hoveredWasabiId);
+            const closestWasabiAtDrop = findClosestWasabiSlotId(event.clientX, event.clientY);
+            const droppedOnNearbyWasabi = Boolean(isNigiriCardId(cardId) && (closestWasabiAtDrop ?? hoveredWasabiId));
             if (droppedOnNearbyWasabi) {
-              setRecentDroppedNigiriId(cardId);
-              setRecentDroppedWasabiId(hoveredWasabiId);
-              if (dropAnimTimerRef.current) {
-                window.clearTimeout(dropAnimTimerRef.current);
-              }
-              dropAnimTimerRef.current = window.setTimeout(() => {
-                setRecentDroppedNigiriId((current) => (current === cardId ? null : current));
-                setRecentDroppedWasabiId((current) => (current === hoveredWasabiId ? null : current));
-              }, 700);
+              setOptimisticStackedDrop({ nigiriId: cardId });
             }
 
             setHoveredWasabiId(null);
@@ -162,6 +185,7 @@ export function TableView3D({ players, currentPlayerId, canDropCard, draggingCar
                       (() => {
                         const groupedCards: { base: string; stacked: string[]; id: string }[] = [];
                         const openWasabis: { base: string; stacked: string[]; id: string }[] = [];
+                        let firstPuddingGroup: { base: string; stacked: string[]; id: string } | null = null;
 
                         playedCards.forEach((cardId, i) => {
                           if (cardId.includes("wasabi")) {
@@ -171,10 +195,21 @@ export function TableView3D({ players, currentPlayerId, canDropCard, draggingCar
                           } else if (cardId.includes("nigiri") && openWasabis.length > 0) {
                             const target = openWasabis.shift()!;
                             target.stacked.push(cardId);
+                          } else if (cardId.includes("pudding")) {
+                            if (!firstPuddingGroup) {
+                              firstPuddingGroup = { base: cardId, stacked: [], id: `${cardId}-${i}` };
+                              groupedCards.push(firstPuddingGroup);
+                            } else {
+                              firstPuddingGroup.stacked.push(cardId);
+                            }
                           } else {
                             groupedCards.push({ base: cardId, stacked: [], id: `${cardId}-${i}` });
                           }
                         });
+
+                        const firstOpenWasabiGroup = groupedCards.find(
+                          (candidate) => candidate.base.includes("wasabi") && candidate.stacked.length === 0
+                        );
 
                         return groupedCards.map((group, index) => {
                           const isPulsing = group.base.includes("wasabi") && group.stacked.length === 0;
@@ -215,29 +250,28 @@ export function TableView3D({ players, currentPlayerId, canDropCard, draggingCar
                                   setHoveredWasabiId(group.id);
                                 }
                               }}
+                              onDragEnter={(event) => {
+                                if (!canSnapNigiriToWasabi) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                              }}
                               onDragLeave={(event) => {
                                 // Evitar parpadeos de dragLeave si el cursor entra a hijos del div (las cartas adentro)
                                 const related = event.relatedTarget as Node | null;
                                 if (related && event.currentTarget.contains(related)) return;
                               }}
                               onDrop={(event) => {
-                                if (!canSnapNigiriToWasabi || !onDropCard || !draggingCardId) return;
+                                if (!canDropCard || !onDropCard) return;
                                 event.preventDefault();
                                 event.stopPropagation();
 
-                                const droppedCardId = event.dataTransfer.getData("text/plain") || draggingCardId;
-                                setHoveredWasabiId(null);
-                                setRecentDroppedNigiriId(droppedCardId);
-                                setRecentDroppedWasabiId(group.id);
-                                if (dropAnimTimerRef.current) {
-                                  window.clearTimeout(dropAnimTimerRef.current);
-                                }
-                                dropAnimTimerRef.current = window.setTimeout(() => {
-                                  setRecentDroppedNigiriId((current) => (current === droppedCardId ? null : current));
-                                  setRecentDroppedWasabiId((current) => (current === group.id ? null : current));
-                                }, 700);
+                                const droppedCardId = event.dataTransfer.getData("text/plain");
+                                if (!droppedCardId || !isNigiriCardId(droppedCardId)) return;
 
-                                onDropCard(droppedCardId, true);
+                                setHoveredWasabiId(null);
+                                setOptimisticStackedDrop({ nigiriId: droppedCardId });
+
+                                onDropCard?.(droppedCardId, true);
                               }}
                             >
                               <Tooltip>
@@ -272,43 +306,36 @@ export function TableView3D({ players, currentPlayerId, canDropCard, draggingCar
                               )}
 
                               {group.stacked.map((stackedCard, sIdx) => (
-                                <Tooltip key={`${stackedCard}-${sIdx}`}>
-                                  <TooltipTrigger>
-                                    <motion.img
-                                      alt={stackedCard}
-                                      initial={{ scale: 0.8, opacity: 0, y: -20, z: 20, rotateZ: baseRotation }}
-                                      animate={
-                                        recentDroppedNigiriId === stackedCard && sIdx === group.stacked.length - 1
-                                          ? {
-                                              scale: [0.98, 1.06, 1],
-                                              opacity: 1,
-                                              y: [14, -2, 8],
-                                              z: [24, 68, 30],
-                                              rotateZ: baseRotation + (isMe ? 3 : -3),
-                                            }
-                                          : { scale: 1, opacity: 1, y: 8, z: 30, rotateZ: baseRotation + (isMe ? 3 : -3) }
-                                      }
-                                      className="absolute bottom-0 left-0 h-32 w-[5.5rem] rounded-xl object-cover shadow-[6px_16px_28px_rgba(0,0,0,0.95)] transition-transform duration-300"
-                                      src={getCardAssetFromId(stackedCard)}
-                                      transition={{ duration: 0.32, ease: "easeOut" }}
-                                    />
-                                  </TooltipTrigger>
-                                  <TooltipContent className="border-none bg-black/80 font-semibold text-white">
-                                    {formatCardName(stackedCard)}
-                                  </TooltipContent>
-                                </Tooltip>
+                                <motion.img
+                                  key={`stack-${stackedCard}-${sIdx}`}
+                                  alt={stackedCard}
+                                  initial={{ scale: 0.95, opacity: 0.8, y: 2, x: 0, z: 20, rotateZ: baseRotation + (isMe ? 3 : -3) }}
+                                  animate={{ 
+                                    scale: 1, 
+                                    opacity: 1, 
+                                    y: 8 + (sIdx * 10), 
+                                    x: group.base.includes("pudding") ? (sIdx % 2 === 0 ? 4 : -4) : 0,
+                                    z: 30 + (sIdx * 2), 
+                                    rotateZ: baseRotation + (isMe ? 3 : -3) + (sIdx * 2) 
+                                  }}
+                                  className="pointer-events-none absolute bottom-0 left-0 h-32 w-[5.5rem] rounded-xl object-cover shadow-[6px_16px_28px_rgba(0,0,0,0.65)]"
+                                  src={getCardAssetFromId(stackedCard)}
+                                  transition={{ duration: 0.32, ease: "easeOut" }}
+                                />
                               ))}
 
-                              {recentDroppedNigiriId &&
-                                recentDroppedWasabiId === group.id &&
-                                !group.stacked.includes(recentDroppedNigiriId) && (
+                              {activeOptimisticNigiriId &&
+                                isMe &&
+                                firstOpenWasabiGroup?.id === group.id &&
+                                !playedCards.includes(activeOptimisticNigiriId) && (
                                   <motion.img
-                                    alt={recentDroppedNigiriId}
+                                    key={`optimistic-drop-${activeOptimisticNigiriId}`}
+                                    alt={activeOptimisticNigiriId}
                                     initial={{ scale: 0.98, opacity: 0.95, y: 14, z: 24, rotateZ: baseRotation + (isMe ? 3 : -3) }}
                                     animate={{ scale: [0.98, 1.06, 1], opacity: 1, y: [14, -2, 8], z: [24, 68, 30], rotateZ: baseRotation + (isMe ? 3 : -3) }}
                                     transition={{ duration: 0.32, ease: "easeOut" }}
                                     className="pointer-events-none absolute bottom-0 left-0 h-32 w-[5.5rem] rounded-xl object-cover shadow-[6px_16px_28px_rgba(0,0,0,0.95)]"
-                                    src={getCardAssetFromId(recentDroppedNigiriId)}
+                                    src={getCardAssetFromId(activeOptimisticNigiriId)}
                                   />
                                 )}
                             </div>

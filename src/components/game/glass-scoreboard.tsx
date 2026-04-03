@@ -273,31 +273,17 @@ export function GlassScoreboard({
             
             <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-black/20">
               {Object.entries(buildCollectionStats(myPlayedCards))
-              .sort(([a], [b]) => {
-                const order = [
-                  "Nigiri calamar",
-                  "Nigiri salmón",
-                  "Nigiri huevo",
-                  "Makis x3",
-                  "Makis x2",
-                  "Makis x1",
-                  "Gyozas",
-                  "Tempura",
-                  "Sashimi",
-                  "Pudín",
-                  "Wasabi",
-                  "Palillos",
-                  "Nigiris",
-                  "Otros",
-                ];
-                const iA = order.indexOf(a);
-                const iB = order.indexOf(b);
-                return (iA === -1 ? 99 : iA) - (iB === -1 ? 99 : iB);
+              .sort(([, statA], [, statB]) => {
+                if (statB.points !== statA.points) return statB.points - statA.points;
+                if (statB.count !== statA.count) return statB.count - statA.count;
+                return 0;
               })
-              .map(([cat, stat]) => {
+              .map(([cat, stat], index) => {
                 const info = CAT_INFO[cat] || CAT_INFO["Otros"];
                 const isMaki = cat.startsWith("Maki");
                 const isNigiri = cat.startsWith("Nigiri");
+                const rank = index + 1;
+                const rankBadge = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}.`;
                 const tintColors = isMaki ? "bg-red-950/40 border-red-900/50" :
                                    isNigiri || cat === "Nigiris" ? "bg-yellow-950/40 border-yellow-900/50" :
                                    cat === "Gyozas" ? "bg-blue-950/40 border-blue-900/50" :
@@ -311,6 +297,9 @@ export function GlassScoreboard({
                 return (
                   <div key={cat} className={`flex items-center justify-between rounded-xl p-2 shadow-[0_6px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.02),inset_0_-2px_6px_rgba(0,0,0,0.6)] transition-colors border max-h-[52px] ${tintColors}`}>
                     <div className="flex items-center gap-3">
+                       <div className="min-w-[28px] rounded-md bg-black/40 px-1 py-0.5 text-center text-xs font-black text-white/90 shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]">
+                         {rankBadge}
+                       </div>
                        <div className="relative w-8 h-8 drop-shadow-[0_4px_4px_rgba(0,0,0,0.7)] flex items-center justify-center">
                           <Image src={info.img} alt={info.label} fill className="object-contain scale-110" />
                        </div>
@@ -364,12 +353,10 @@ export function GlassScoreboard({
                         <div className="flex items-center gap-1 bg-[#0a0406] px-1.5 py-0.5 rounded shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]">
                           <Image src={pudinImg} alt="Pudin" width={10} height={10} className="object-contain" />
                           <span className="text-sm font-bold text-[#f9a8d4] leading-none mb-0.5 mt-0.5">{player.puddings}</span>
-                          <span className="text-[8px] uppercase font-bold text-white/40 ml-0.5 mt-0.5 tracking-wider">Pudín</span>
                         </div>
                         <div className="flex items-center gap-1 bg-[#0a0406] px-1.5 py-0.5 rounded shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]">
                           <Image src={cardBackImg} alt="C" width={10} height={14} className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ml-0.5" />
                           <span className="text-sm font-bold text-[#67e8f9] leading-none mb-0.5 mt-0.5">{player.handCount}</span>
-                          <span className="text-[8px] uppercase font-bold text-white/40 ml-0.5 mt-0.5 tracking-wider">Mano</span>
                         </div>
                       </div>
                     </div>
@@ -379,7 +366,6 @@ export function GlassScoreboard({
                       <Star className="text-[#fbbf24] fill-[#fbbf24] w-6 h-6 shadow-black drop-shadow-md" />
                       <p className="font-heading text-2xl font-black text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)] leading-none mt-0.5">{player.score}</p>
                     </div>
-                    <span className="text-[8px] uppercase font-bold text-white/40 tracking-wider">Puntos</span>
                   </div>
                 </div>
               </div>

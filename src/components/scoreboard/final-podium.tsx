@@ -21,8 +21,8 @@ function medalForIndex(index: number): string {
 export function FinalPodium({ players }: FinalPodiumProps) {
   if (players.length === 0) {
     return (
-      <Card className="p-4">
-        <p className="text-base text-muted-foreground">Todavia no hay puntuaciones finales.</p>
+      <Card className="border border-white/15 bg-[#130915]/90 p-4 text-white">
+        <p className="text-base text-white/70">Todavia no hay puntuaciones finales.</p>
       </Card>
     );
   }
@@ -35,14 +35,14 @@ export function FinalPodium({ players }: FinalPodiumProps) {
   return (
     <div className="grid gap-3 md:grid-cols-3">
       {ranked.slice(0, 3).map((player, index) => (
-        <Card className="border-2 border-border/80 p-4" key={player.playerId}>
-          <p className="font-heading text-3xl">#{index + 1}</p>
-          <p className="mt-1 text-xl font-semibold">{player.displayName}</p>
+        <Card className="border border-white/15 bg-[#130915]/90 p-4 text-white shadow-[0_20px_40px_rgba(0,0,0,0.55)]" key={player.playerId}>
+          <p className="font-heading text-3xl text-[#fbbf24]">#{index + 1}</p>
+          <p className="mt-1 text-xl font-semibold text-white">{player.displayName}</p>
           <div className="mt-3 flex items-center justify-between text-base">
-            <Badge variant="secondary">{medalForIndex(index)}</Badge>
-            <Badge>{player.finalScore} pts</Badge>
+            <Badge className="border-white/20 bg-black/35 text-cyan-200" variant="secondary">{medalForIndex(index)}</Badge>
+            <Badge className="bg-gradient-to-b from-[#22c55e] to-[#14532d] text-white">{player.finalScore} pts</Badge>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">Pudines: {player.puddings}</p>
+          <p className="mt-2 text-sm text-white/70">Pudines: {player.puddings}</p>
         </Card>
       ))}
     </div>

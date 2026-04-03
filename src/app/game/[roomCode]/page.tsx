@@ -17,8 +17,9 @@ import { useGameActions } from "@/hooks/use-game-actions";
 import { useRoomChannel } from "@/hooks/use-room-channel";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useSoundEffects } from "@/hooks/use-sound-effects";
+import { cycleSoundtrackLevel, getSoundtrackLevel, initSoundtrack, setSoundtrackLevel as setGlobalSoundtrackLevel, SoundtrackLevel } from "@/lib/soundtrack";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogOut } from "lucide-react";
+import { LogOut, Volume1, Volume2, VolumeX } from "lucide-react";
 import Image from "next/image";
 
 import pudinImg from "@/app/assets/illustrations/pudin-illustration.png";
@@ -77,6 +78,47 @@ function countOpenWasabiSlots(playedCards: string[]): number {
     }
   }
   return openWasabi;
+}
+
+function findFirstOpenWasabiIndex(playedCards: string[]): number {
+  const openWasabiIndexes: number[] = [];
+
+  playedCards.forEach((cardId, index) => {
+    const cardType = cardTypeFromId(cardId);
+    if (cardType === "wasabi") {
+      openWasabiIndexes.push(index);
+    } else if (isNigiriCard(cardId) && openWasabiIndexes.length > 0) {
+      openWasabiIndexes.shift();
+    }
+  });
+
+  return openWasabiIndexes.length > 0 ? openWasabiIndexes[0] : -1;
+}
+
+function insertNigiriAfterFirstOpenWasabi(playedCards: string[], nigiriCardId: string): string[] {
+  const next = [...playedCards];
+  const firstOpenWasabiIndex = findFirstOpenWasabiIndex(next);
+
+  if (firstOpenWasabiIndex >= 0) {
+    next.splice(firstOpenWasabiIndex + 1, 0, nigiriCardId);
+    return next;
+  }
+
+  next.push(nigiriCardId);
+  return next;
+}
+
+function insertNigiriBeforeFirstOpenWasabi(playedCards: string[], nigiriCardId: string): string[] {
+  const next = [...playedCards];
+  const firstOpenWasabiIndex = findFirstOpenWasabiIndex(next);
+
+  if (firstOpenWasabiIndex >= 0) {
+    next.splice(firstOpenWasabiIndex, 0, nigiriCardId);
+    return next;
+  }
+
+  next.push(nigiriCardId);
+  return next;
 }
 
 type RoomRow = {
@@ -172,6 +214,12 @@ type RoundIntroState = {
   round: number;
 };
 
+type OptimisticWasabiNigiriState = {
+  id: string;
+  round: number;
+  turn: number;
+};
+
 function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
   const router = useRouter();
   useRoomChannel({ roomId, playerId });
@@ -193,13 +241,23 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [useChopsticksAction, setUseChopsticksAction] = useState(false);
   const [useWasabiAction, setUseWasabiAction] = useState(false);
+  const [optimisticWasabiNigiri, setOptimisticWasabiNigiri] = useState<OptimisticWasabiNigiriState | null>(null);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
+  const [soundtrackLevel, setSoundtrackLevel] = useState<SoundtrackLevel>(() => getSoundtrackLevel());
   const [roundIntro, setRoundIntro] = useState<RoundIntroState | null>(null);
   const shownRoundIntroRef = useRef(0);
   const pendingRoundIntroRef = useRef<number | null>(null);
   const roundIntroIdRef = useRef(0);
   const revealOpen = lastReveal.length > 0;
+
+  useEffect(() => {
+    initSoundtrack();
+  }, []);
+
+  useEffect(() => {
+    setGlobalSoundtrackLevel(soundtrackLevel);
+  }, [soundtrackLevel]);
 
   const handleAbandon = async () => {
     setIsLeaving(true);
@@ -222,11 +280,41 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
   }, [waitingForPlayers, playWaiting, stopWaiting]);
 
   useEffect(() => {
+    if (!optimisticWasabiNigiri || !snapshot) return;
+
+    const snapshotRound = snapshot.round ?? 1;
+
+    // Si cambió de ronda, la carta ya debería estar confirmada en el snapshot anterior.
+    if (snapshotRound > optimisticWasabiNigiri.round) {
+      setOptimisticWasabiNigiri(null);
+      return;
+    }
+
+    // Solo limpiar el estado optimista si la carta YA existe en el playedCards real del snapshot.
+    // Esto evita que la carta desaparezca antes de que el servidor confirme.
+    const myPlayer = snapshot.players[playerId];
+    if (myPlayer && myPlayer.playedCards.includes(optimisticWasabiNigiri.id)) {
+      setOptimisticWasabiNigiri(null);
+    }
+  }, [optimisticWasabiNigiri, playerId, snapshot]);
+
+  useEffect(() => {
     if (!snapshot) return;
     if (snapshot.status !== "WAITING_SCOREBOARD") return;
     if (snapshot.round < snapshot.totalRounds) return;
 
     const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          `sushi-go:last-final:${roomCode}`,
+          JSON.stringify({
+            savedAt: Date.now(),
+            snapshot,
+          })
+        );
+      } catch {
+        // ignore storage failures and continue navigation
+      }
       router.push(`/scoreboard/${roomCode}`);
     }, 900);
 
@@ -276,10 +364,10 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
     }, 120);
     const revealT = window.setTimeout(() => {
       playReveal();
-    }, 260);
+    }, 420);
     const closeT = window.setTimeout(() => {
       setRoundIntro((current) => (current?.id === roundIntro.id ? null : current));
-    }, 2300);
+    }, 3600);
 
     return () => {
       window.clearTimeout(tickT);
@@ -296,6 +384,19 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
     }
     
     // Si la API acepta string o array
+    const nigiriSelectedForWasabi =
+      useWasabiAction && selectedCardIds.length > 0 && isNigiriCard(selectedCardIds[0])
+        ? selectedCardIds[0]
+        : null;
+
+    if (nigiriSelectedForWasabi) {
+      setOptimisticWasabiNigiri({
+        id: nigiriSelectedForWasabi,
+        round: snapshot?.round ?? 1,
+        turn: snapshot?.turn ?? 1,
+      });
+    }
+
     const ok = await selectCard(
       useChopsticksAction ? [selectedCardIds[0], selectedCardIds[1]] : selectedCardIds[0], 
       useChopsticksAction,
@@ -306,8 +407,10 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
       setSelectedCardIds([]);
       setUseChopsticksAction(false);
       setUseWasabiAction(false);
+    } else if (nigiriSelectedForWasabi) {
+      setOptimisticWasabiNigiri(null);
     }
-  }, [selectCard, selectedCardIds, useChopsticksAction, useWasabiAction, playSelect]);
+  }, [playSelect, selectCard, selectedCardIds, snapshot?.round, snapshot?.turn, useChopsticksAction, useWasabiAction]);
 
   const playFromDrop = useCallback(
     async (cardId: string, droppedOnWasabi = false) => {
@@ -323,20 +426,33 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
         }
       }
       
+      const shouldUseWasabi = droppedOnWasabi || useWasabiAction;
+      const nigiriSelectedForWasabi = shouldUseWasabi && isNigiriCard(cardId) ? cardId : null;
+
+      if (nigiriSelectedForWasabi) {
+        setOptimisticWasabiNigiri({
+          id: nigiriSelectedForWasabi,
+          round: snapshot?.round ?? 1,
+          turn: snapshot?.turn ?? 1,
+        });
+      }
+
       const ok = await selectCard(
         useChopsticksAction ? [idsToPlay[0], idsToPlay[1]] : idsToPlay[0], 
         useChopsticksAction,
-        droppedOnWasabi || useWasabiAction
+        shouldUseWasabi
       );
       if (ok) {
         playSelect();
         setSelectedCardIds([]);
         setUseChopsticksAction(false);
         setUseWasabiAction(false);
+      } else if (nigiriSelectedForWasabi) {
+        setOptimisticWasabiNigiri(null);
       }
       setDraggingCardId(null);
     },
-    [selectCard, useChopsticksAction, useWasabiAction, playSelect, selectedCardIds]
+    [playSelect, selectCard, selectedCardIds, snapshot?.round, snapshot?.turn, useChopsticksAction, useWasabiAction]
   );
 
   const playerNames = useMemo(() => {
@@ -362,29 +478,22 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
           const pendingCard = pendingSelection.cardId;
           const pendingIsNigiri = isNigiriCard(pendingCard);
 
-          if (pendingIsNigiri && pendingSelection.useWasabi === false) {
-            const firstOpenWasabiIndex = virtualPlayedCards.findIndex((playedCardId, idx) => {
-              if (cardTypeFromId(playedCardId) !== "wasabi") return false;
-
-              let openCount = 0;
-              for (let i = 0; i <= idx; i += 1) {
-                const t = cardTypeFromId(virtualPlayedCards[i]);
-                if (t === "wasabi") openCount += 1;
-                if (isNigiriCard(virtualPlayedCards[i]) && openCount > 0) openCount -= 1;
-              }
-
-              return openCount > 0;
-            });
-
-            if (firstOpenWasabiIndex >= 0) {
-              virtualPlayedCards.splice(firstOpenWasabiIndex, 0, pendingCard);
-            } else {
-              virtualPlayedCards.push(pendingCard);
-            }
+          if (pendingIsNigiri && pendingSelection.useWasabi) {
+            virtualPlayedCards = insertNigiriAfterFirstOpenWasabi(virtualPlayedCards, pendingCard);
+          } else if (pendingIsNigiri && !pendingSelection.useWasabi) {
+            virtualPlayedCards = insertNigiriBeforeFirstOpenWasabi(virtualPlayedCards, pendingCard);
           } else {
             virtualPlayedCards.push(pendingCard);
           }
         }
+      }
+
+      if (
+        player.id === playerId &&
+        optimisticWasabiNigiri?.id &&
+        !virtualPlayedCards.includes(optimisticWasabiNigiri.id)
+      ) {
+        virtualPlayedCards = insertNigiriAfterFirstOpenWasabi(virtualPlayedCards, optimisticWasabiNigiri.id);
       }
 
       return {
@@ -394,7 +503,7 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
         handCount: player.hand.length,
       };
     });
-  }, [playerNames, snapshot, playerId, pendingSelection]);
+  }, [optimisticWasabiNigiri, pendingSelection, playerId, playerNames, snapshot]);
 
   const otherPlayers = useMemo(() => {
     if (!snapshot) return [];
@@ -413,6 +522,7 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
           handCount: player.hand.length,
           puddings: player.puddings,
           score: baseScore + liveScore,
+          scoreByRound: player.scoreByRound,
         };
       })
       .filter((player) => player.id !== playerId);
@@ -425,6 +535,11 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
   const myPlayedCards = me?.playedCards ?? [];
   const hasChopsticks = myPlayedCards.some((cardId) => cardTypeFromId(cardId) === "chopsticks");
   const hasOpenWasabi = countOpenWasabiSlots(myPlayedCards) > 0;
+  const totalRounds = snapshot?.totalRounds ?? 3;
+  const roundScores = me?.scoreByRound ?? Array.from({ length: totalRounds }, () => 0);
+  const currentRoundIndex = Math.max(0, Math.min(totalRounds - 1, (snapshot?.round ?? 1) - 1));
+  const finalizedBeforeCurrent = roundScores.slice(0, currentRoundIndex).reduce((sum, value) => sum + value, 0);
+  const liveCurrentRoundScore = projectedScore - finalizedBeforeCurrent;
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-gradient-to-b from-[#1a0a2e] to-[#0a0410]">
@@ -438,7 +553,26 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
       <BackgroundArt />
 
       {/* Exit Game Button */}
-      <div className="fixed top-6 left-6 z-50">
+      <div className="fixed top-6 left-6 z-50 flex items-center gap-3">
+        <button
+          className="relative group cursor-pointer active:scale-95 hover:-translate-y-0.5 transition-transform duration-100"
+          onClick={() => {
+            setSoundtrackLevel(cycleSoundtrackLevel());
+          }}
+          onMouseEnter={playHover}
+          type="button"
+        >
+          <div className="relative flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-b from-[#4b5563] to-[#1f2937] shadow-[0_15px_30px_rgba(0,0,0,0.6),inset_0_2px_5px_rgba(255,255,255,0.2),inset_0_-6px_15px_rgba(0,0,0,0.4)] group-hover:brightness-110 group-hover:shadow-[0_20px_32px_rgba(0,0,0,0.7),inset_0_2px_5px_rgba(255,255,255,0.25),inset_0_-6px_15px_rgba(0,0,0,0.35)] group-active:shadow-[0_5px_10px_rgba(0,0,0,0.6),inset_0_2px_5px_rgba(255,255,255,0.1),inset_0_-2px_5px_rgba(0,0,0,0.4)] transition-all">
+            {soundtrackLevel === 0 ? (
+              <VolumeX className="text-white drop-shadow-[0_3px_5px_rgba(0,0,0,0.8)] w-5 h-5" />
+            ) : soundtrackLevel === 1 ? (
+              <Volume1 className="text-white drop-shadow-[0_3px_5px_rgba(0,0,0,0.8)] w-5 h-5" />
+            ) : (
+              <Volume2 className="text-white drop-shadow-[0_3px_5px_rgba(0,0,0,0.8)] w-5 h-5" />
+            )}
+          </div>
+        </button>
+
         <button
           className="relative group cursor-pointer active:scale-95 hover:-translate-y-0.5 transition-transform duration-100"
           onClick={() => setConfirmLeaveOpen(true)}
@@ -500,6 +634,37 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
 
       <OpponentsHud players={otherPlayers} />
 
+      {(snapshot?.round ?? 1) > 0 && (
+        <div className="pointer-events-none fixed right-[376px] top-5 z-45 hidden lg:flex items-start gap-4">
+          {roundScores
+            .map((score, index) => ({ score, index }))
+            .filter(({ index }) => index <= currentRoundIndex)
+            .map(({ score, index }) => {
+              const isCurrentRound = index === currentRoundIndex;
+              const displayScore = isCurrentRound ? liveCurrentRoundScore : score;
+
+              return (
+              <motion.div
+                key={`round-badge-${index}`}
+                initial={{ opacity: 0, y: -24, scale: 0.85 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ delay: 0.08 * index, duration: 0.35, ease: "easeOut" }}
+                className="flex flex-col items-center"
+              >
+                <span className="mb-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#f8deb1] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                  {`Ronda ${index + 1}`}
+                </span>
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.22),rgba(255,107,107,0.16)_45%,rgba(78,205,196,0.18)_70%,rgba(18,10,28,0.95)_100%)] border border-[#f6c28e]/45 shadow-[0_14px_28px_rgba(0,0,0,0.55),inset_0_4px_10px_rgba(255,255,255,0.12),inset_0_-10px_16px_rgba(0,0,0,0.45)]">
+                  <div className="absolute inset-1 rounded-full border border-white/15" />
+                  <span className="font-heading text-3xl font-black leading-none text-[#FFE66D] drop-shadow-[0_2px_8px_rgba(255,230,109,0.55)]">
+                    {displayScore}
+                  </span>
+                </div>
+              </motion.div>
+            );})}
+        </div>
+      )}
+
       <ComboOverlay playedCards={myPlayedCards} />
 
       <AnimatePresence>
@@ -509,32 +674,32 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="pointer-events-none fixed inset-0 z-[55]"
+            transition={{ duration: 0.4 }}
+            className="pointer-events-none fixed inset-y-0 left-0 right-0 lg:right-[360px] z-[55] flex items-center justify-center"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.7 }}
-              animate={{ opacity: [0, 0.7, 0], scale: [0.7, 1.15, 1.6] }}
-              transition={{ duration: 0.9, ease: "easeOut" }}
-              className="absolute left-1/2 top-1/2 h-[50vh] w-[50vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-yellow-300/35 blur-3xl"
+              animate={{ opacity: [0, 0.65, 0], scale: [0.7, 1.25, 1.95] }}
+              transition={{ duration: 1.6, ease: "easeOut" }}
+              className="absolute h-[72vh] w-[72vh] rounded-full bg-yellow-300/35 blur-3xl"
             />
 
             <motion.div
-              initial={{ opacity: 0, scale: 0.8, y: 24 }}
-              animate={{ opacity: [0, 1, 0], scale: [0.8, 1.08, 1], y: [24, 0, -4] }}
-              transition={{ duration: 1.85, times: [0, 0.45, 1], ease: "easeOut" }}
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/25 bg-black/45 px-8 py-4 text-center shadow-[0_18px_40px_rgba(0,0,0,0.6)] backdrop-blur-md"
+              initial={{ opacity: 0, scale: 0.72, y: 40 }}
+              animate={{ opacity: [0, 1, 1, 0], scale: [0.72, 1.16, 1.14, 1.1], y: [40, 0, 0, -10] }}
+              transition={{ duration: 3.25, times: [0, 0.3, 0.78, 1], ease: "easeOut" }}
+              className="rounded-3xl border border-white/30 bg-black/50 px-14 py-9 text-center shadow-[0_28px_70px_rgba(0,0,0,0.72)] backdrop-blur-md"
             >
-              <p className="font-heading text-2xl uppercase tracking-[0.2em] text-white/80">Ronda</p>
-              <p className="font-heading text-6xl font-black leading-none text-[#fbbf24] drop-shadow-[0_4px_16px_rgba(251,191,36,0.9)]">
+              <p className="font-heading text-4xl uppercase tracking-[0.28em] text-white/85">Ronda</p>
+              <p className="font-heading text-8xl font-black leading-none text-[#fbbf24] drop-shadow-[0_8px_24px_rgba(251,191,36,0.92)]">
                 {roundIntro.round}
               </p>
             </motion.div>
 
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 0.8, 0] }}
-              transition={{ duration: 0.45, times: [0, 0.3, 1] }}
+              animate={{ opacity: [0, 0.72, 0] }}
+              transition={{ duration: 1.2, times: [0, 0.34, 1] }}
               className="absolute inset-0 bg-white/20"
             />
           </motion.div>
@@ -545,6 +710,7 @@ function GameStage({ roomId, roomCode, playerId, players }: GameStageProps) {
         currentPlayerId={playerId}
         canDropCard={!waitingForPlayers}
         draggingCardId={draggingCardId}
+        optimisticWasabiNigiriId={optimisticWasabiNigiri?.id ?? null}
         onDropCard={(cardId, droppedOnWasabi) => {
           if (waitingForPlayers) return;
           void playFromDrop(cardId, droppedOnWasabi);

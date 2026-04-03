@@ -25,25 +25,25 @@ export function MatchList({ matches }: MatchListProps) {
   return (
     <Table>
       <TableHeader>
-        <TableRow>
-          <TableHead>Fecha</TableHead>
-          <TableHead>Sala</TableHead>
-          <TableHead>Jugadores</TableHead>
-          <TableHead>Duracion</TableHead>
+        <TableRow className="border-white/15">
+          <TableHead className="text-white/70">Fecha</TableHead>
+          <TableHead className="text-white/70">Sala</TableHead>
+          <TableHead className="text-white/70">Jugadores</TableHead>
+          <TableHead className="text-white/70">Duración</TableHead>
           <TableHead className="text-right">Accion</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {matches.map((match) => (
-          <TableRow key={match.gameId}>
-            <TableCell>{new Date(match.createdAt).toLocaleString()}</TableCell>
+          <TableRow className="border-white/10" key={match.gameId}>
+            <TableCell className="text-white/90">{new Date(match.createdAt).toLocaleString()}</TableCell>
             <TableCell>
-              <Badge variant="outline">{match.roomCode || "N/A"}</Badge>
+              <Badge className="border-white/20 bg-black/35 text-[#fbbf24]" variant="outline">{match.roomCode || "N/A"}</Badge>
             </TableCell>
-            <TableCell>{match.players.join(", ") || "Sin datos"}</TableCell>
-            <TableCell>{formatDuration(match.totalDurationMs)}</TableCell>
+            <TableCell className="text-white/85">{match.players.join(", ") || "Sin datos"}</TableCell>
+            <TableCell className="text-cyan-200">{formatDuration(match.totalDurationMs)}</TableCell>
             <TableCell className="text-right">
-              <Link className="text-sm font-medium text-primary underline-offset-2 hover:underline" href={`/scoreboard/${match.roomCode}`}>
+              <Link className="text-sm font-bold text-emerald-300 underline-offset-2 hover:underline" href={`/scoreboard/${match.roomCode}`}>
                 Ver scoreboard
               </Link>
             </TableCell>

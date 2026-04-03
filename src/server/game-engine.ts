@@ -1,4 +1,5 @@
 import { advanceTurn, canHandleEvent, GameMachineState } from "@/domain/state-machine";
+import { scoreRoundForPlayers } from "@/domain/scoring";
 import {
   CardType,
   CardInstance,
@@ -108,10 +109,12 @@ function appendSelectionRespectingWasabi(
 
   for (const selected of selectedCards) {
     const selectedIsNigiri = isNigiriCardType(selected.type);
-    if (!useWasabi && selectedIsNigiri) {
+    if (selectedIsNigiri) {
       const insertionIndex = firstOpenWasabiIndex(next);
       if (insertionIndex >= 0) {
-        next.splice(insertionIndex, 0, selected);
+        // useWasabi=true => apilar con wasabi (nigiri va despues del wasabi abierto)
+        // useWasabi=false => mantener separado (nigiri va antes del wasabi abierto)
+        next.splice(useWasabi ? insertionIndex + 1 : insertionIndex, 0, selected);
         continue;
       }
     }
@@ -208,6 +211,28 @@ function resolveTurn(state: AuthoritativeRoomState): EngineResolution {
   });
 
   const machine = advanceTurn(state.machine);
+
+  if (machine.status === "WAITING_SCOREBOARD" && state.machine.status !== "WAITING_SCOREBOARD") {
+    // La ronda terminó, procesamos el puntaje de la ronda y los pudines extras
+    
+    // Convertimos las cartas jugadas al formato CardType[] requerido
+    const cardsInPlayArr = state.turnOrder.map((pid) =>
+      nextPlayers[pid].playedCards.map((c) => c.type as CardType)
+    );
+    
+    const liveScores = scoreRoundForPlayers(cardsInPlayArr);
+    
+    state.turnOrder.forEach((pid, index) => {
+      const p = nextPlayers[pid];
+      const newScoreArr = [...p.scoreByRound];
+      newScoreArr[state.machine.round - 1] = liveScores[index].totalRoundPoints;
+      
+      // Actualizamos array inmutable
+      p.scoreByRound = newScoreArr;
+      p.puddings = liveScores[index].puddingCount;
+    });
+  }
+
   const nextState: AuthoritativeRoomState = {
     ...state,
     machine,
@@ -389,6 +414,7 @@ export function resolveGracePeriodBots(state: AuthoritativeRoomState, nowMs: num
         [playerId]: {
           cardId: firstCard.id,
           useChopsticks: false,
+          useWasabi: false,
           timestamp: nowMs,
         },
       },

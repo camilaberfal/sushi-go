@@ -27,15 +27,17 @@ export function OpponentsHud({ players }: OpponentsHudProps) {
         <div key={player.id} className="relative flex flex-col items-center">
           {/* Avatar and Name */}
           <div className="relative z-10 flex items-center justify-center gap-2.5 drop-shadow-xl">
-            <Avatar className="h-12 w-12 border-2 border-white/20 bg-cover shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
-              <AvatarFallback className="bg-black/60 font-heading text-xl text-white">
-                {player.displayName.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="rounded-lg bg-black/40 px-3 py-1 max-w-[120px] backdrop-blur-sm border border-white/10 shadow-md">
-              <p className="text-center text-sm font-semibold text-white/90 truncate">
-                {player.displayName}
-              </p>
+            <div className="flex flex-row items-center gap-2.5">
+              <Avatar className="h-12 w-12 border-2 border-white/20 bg-cover shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
+                <AvatarFallback className="bg-black/60 font-heading text-xl text-white">
+                  {player.displayName.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="rounded-lg bg-black/40 px-3 py-1 max-w-[120px] backdrop-blur-sm border border-white/10 shadow-md">
+                <p className="text-center text-sm font-semibold text-white/90 truncate">
+                  {player.displayName}
+                </p>
+              </div>
             </div>
           </div>
 
