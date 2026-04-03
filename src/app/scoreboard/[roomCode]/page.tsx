@@ -195,7 +195,35 @@ function cardKey(raw: string): string {
   return raw.split("-")[0];
 }
 
+function toPlayerName(candidate: unknown, players: GamePlayerRow[]): string | null {
+  if (typeof candidate !== "string") return null;
+  const normalized = candidate.trim();
+  if (!normalized) return null;
+
+  const byId = players.find((player) => player.user_id === normalized);
+  if (byId) return byId.display_name;
+
+  const byName = players.find((player) => player.display_name === normalized);
+  if (byName) return byName.display_name;
+
+  return normalized;
+}
+
 function computePuddingPoints(players: GamePlayerRow[]): Record<string, number> {
+  const inferred = Object.fromEntries(
+    players.map((player) => {
+      const roundTotal = (player.score_by_round ?? []).reduce((sum, value) => sum + numberFromUnknown(value, 0), 0);
+      const finalScore = numberFromUnknown(player.final_score, 0);
+      return [player.user_id, Math.round(finalScore - roundTotal)];
+    })
+  ) as Record<string, number>;
+
+  // Prefer persisted final score deltas; they are authoritative for pudding points
+  // even if `game_players.puddings` is stale or inconsistent.
+  if (players.length > 0) {
+    return inferred;
+  }
+
   const result = Object.fromEntries(players.map((p) => [p.user_id, 0])) as Record<string, number>;
   if (players.length === 0) return result;
 
@@ -222,6 +250,9 @@ function toPodiumPlayers(players: GamePlayerRow[]): PlayerStat[] {
   const puddingPoints = computePuddingPoints(players);
   const ranked = [...players].sort((a, b) => {
     if (b.final_score !== a.final_score) return b.final_score - a.final_score;
+    const bPudding = puddingPoints[b.user_id] ?? 0;
+    const aPudding = puddingPoints[a.user_id] ?? 0;
+    if (bPudding !== aPudding) return bPudding - aPudding;
     return b.puddings - a.puddings;
   });
 
@@ -306,10 +337,21 @@ function readHighlightMetrics(highlights: Record<string, unknown>, players: Game
   };
 }
 
-function resolveWinnerName(highlights: Record<string, unknown>, keys: string[]): string | null {
+function resolveWinnerName(highlights: Record<string, unknown>, keys: string[], players: GamePlayerRow[]): string | null {
+  const nestedCandidateKeys = ["playerName", "player", "winner", "userName", "displayName", "playerId", "userId", "id"];
+
   for (const key of keys) {
-    const candidate = stringFromUnknown(highlights[key]);
-    if (candidate) return candidate;
+    const raw = highlights[key];
+    const asName = toPlayerName(raw, players);
+    if (asName) return asName;
+
+    if (raw && typeof raw === "object") {
+      const record = raw as Record<string, unknown>;
+      for (const nestedKey of nestedCandidateKeys) {
+        const nested = toPlayerName(record[nestedKey], players);
+        if (nested) return nested;
+      }
+    }
   }
   return null;
 }
@@ -335,7 +377,7 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Rey del Maki",
       accent: "#FFE66D",
       icon: makisX3Img,
-      winnerPlayerName: resolveWinnerName(highlights, ["makiKing", "maki_king", "mostMakiPlayer"]),
+      winnerPlayerName: resolveWinnerName(highlights, ["makiKing", "maki_king", "mostMakiPlayer", "makiKingPlayer", "maki_king_player", "mostMakiPlayerId"], players),
       description: "Más íconos de maki",
     },
     {
@@ -351,7 +393,7 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Rayo",
       accent: "#4ECDC4",
       icon: nigiriSalmonImg,
-      winnerPlayerName: resolveWinnerName(highlights, ["fastestPlayer", "fastest_player"]),
+      winnerPlayerName: resolveWinnerName(highlights, ["fastestPlayer", "fastest_player", "fastestPlayerId", "fastest_player_id"], players),
       description: "Promedio de jugada más bajo",
     },
     {
@@ -359,7 +401,7 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Sin Prisa",
       accent: "#93C5FD",
       icon: tempuraImg,
-      winnerPlayerName: resolveWinnerName(highlights, ["slowestPlayer", "slowest_player"]),
+      winnerPlayerName: resolveWinnerName(highlights, ["slowestPlayer", "slowest_player", "slowestPlayerId", "slowest_player_id"], players),
       description: "Promedio de jugada más alto",
     },
     {
@@ -367,7 +409,7 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Palillo Pro",
       accent: "#4ECDC4",
       icon: palillosImg,
-      winnerPlayerName: resolveWinnerName(highlights, ["chopsticksMaster", "chopsticks_master"]),
+      winnerPlayerName: resolveWinnerName(highlights, ["chopsticksMaster", "chopsticks_master", "chopsticksMasterId", "chopsticks_master_id"], players),
       description: "Más usos de palillos",
     },
     {
@@ -375,7 +417,7 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Wasabi Sniper",
       accent: "#6EE7B7",
       icon: wasabiImg,
-      winnerPlayerName: resolveWinnerName(highlights, ["wasabiSniper", "wasabi_sniper"]),
+      winnerPlayerName: resolveWinnerName(highlights, ["wasabiSniper", "wasabi_sniper", "wasabiSniperId", "wasabi_sniper_id"], players),
       description: "Más nigiris sobre wasabi",
     },
     {
@@ -383,14 +425,14 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Dumpling Hoarder",
       accent: "#FFE66D",
       icon: makisX3Img,
-      winnerPlayerName: resolveWinnerName(highlights, ["dumplingHoarder", "dumpling_hoarder"]),
+      winnerPlayerName: resolveWinnerName(highlights, ["dumplingHoarder", "dumpling_hoarder", "dumplingHoarderId", "dumpling_hoarder_id"], players),
       description: "5 gyozas en una ronda",
     },
     {
       id: "collector",
       name: "Coleccionista",
       accent: "#FF6B6B",
-      icon: sashimiImg, winnerPlayerName: resolveWinnerName(highlights, ["sashimiCollector", "sashimi_collector"]),
+      icon: sashimiImg, winnerPlayerName: resolveWinnerName(highlights, ["sashimiCollector", "sashimi_collector", "sashimiCollectorId", "sashimi_collector_id"], players),
       description: "Completó 2+ sets sashimi",
     },
     {
