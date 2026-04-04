@@ -11,13 +11,14 @@ import tempuraImg from "@/app/assets/illustrations/tempura-illustration.png";
 import wasabiImg from "@/app/assets/illustrations/wasabi-illustration.png";
 import nigiriSalmonImg from "@/app/assets/illustrations/nigiri-salmon-illustration.png";
 import Image, { StaticImageData } from "next/image";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { Achievement } from "@/components/scoreboard/AchievementBadge";
 import { FinalScoreboard } from "@/components/scoreboard/FinalScoreboard";
 import { HighlightStats } from "@/components/scoreboard/ForensicReport";
 import { PlayerStat } from "@/components/scoreboard/Podium";
 import { SyncAfterTurnPayload } from "@/domain/protocol";
+import { scorePuddings } from "@/domain/scoring";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { getRoomStoreState } from "@/store/room-store";
 
@@ -31,11 +32,20 @@ type GamePlayerRow = {
   final_score: number;
   puddings: number;
   score_by_round: number[];
+  turn_metrics?: unknown;
+};
+
+type CanonicalPlayer = GamePlayerRow & {
+  normalizedPuddings: number;
+  puddingPoints: number;
+  totalScore: number;
 };
 type RoundSummaryRow = { game_id: string; round: number; payload: unknown };
 type MatchHistoryRow = {
   game_id: string;
   total_duration_ms: number;
+  card_play_count?: Record<string, unknown>;
+  total_points_by_card?: Record<string, unknown>;
   highlights: Record<string, unknown>;
 };
 
@@ -180,6 +190,56 @@ function stringFromUnknown(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
 }
 
+function normalizeKey(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function visitRecords(value: unknown, visitor: (record: Record<string, unknown>) => void): void {
+  if (!value || typeof value !== "object") return;
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => visitRecords(entry, visitor));
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  visitor(record);
+  Object.values(record).forEach((entry) => visitRecords(entry, visitor));
+}
+
+function pickDeepValueByKeys(source: unknown, keys: string[]): unknown {
+  const wanted = new Set(keys.map(normalizeKey));
+  let found: unknown = undefined;
+
+  visitRecords(source, (record) => {
+    if (found !== undefined) return;
+    for (const [key, value] of Object.entries(record)) {
+      if (wanted.has(normalizeKey(key))) {
+        found = value;
+        return;
+      }
+    }
+  });
+
+  return found;
+}
+
+function pickDeepNumber(source: unknown, keys: string[], fallback = 0): number {
+  const value = pickDeepValueByKeys(source, keys);
+  return numberFromUnknown(value, fallback);
+}
+
+function pickDeepString(source: unknown, keys: string[], fallback = ""): string {
+  const value = pickDeepValueByKeys(source, keys);
+  return stringFromUnknown(value, fallback);
+}
+
+function pickDeepRecord(source: unknown, keys: string[]): Record<string, unknown> | null {
+  const value = pickDeepValueByKeys(source, keys);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
 function colorFromSeed(seed: string): string {
   let hash = 0;
   for (let i = 0; i < seed.length; i += 1) {
@@ -193,6 +253,40 @@ function colorFromSeed(seed: string): string {
 
 function cardKey(raw: string): string {
   return raw.split("-")[0];
+}
+
+function aggregateMetricFromUnknown(value: unknown, metricKeys: string[]): number {
+  const wanted = metricKeys.map(normalizeKey);
+  let total = 0;
+
+  visitRecords(value, (record) => {
+    for (const [key, raw] of Object.entries(record)) {
+      const normalized = normalizeKey(key);
+      if (!wanted.some((candidate) => normalized.includes(candidate))) continue;
+
+      const n = numberFromUnknown(raw, Number.NaN);
+      if (Number.isFinite(n)) {
+        total += n;
+      }
+    }
+  });
+
+  return total;
+}
+
+function resolveWinnerFromTurnMetrics(
+  players: GamePlayerRow[],
+  metricKeys: string[]
+): string | null {
+  const ranked = players
+    .map((player) => ({
+      player,
+      score: aggregateMetricFromUnknown(player.turn_metrics, metricKeys),
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return ranked[0]?.player.display_name ?? null;
 }
 
 function toPlayerName(candidate: unknown, players: GamePlayerRow[]): string | null {
@@ -210,91 +304,110 @@ function toPlayerName(candidate: unknown, players: GamePlayerRow[]): string | nu
 }
 
 function computePuddingPoints(players: GamePlayerRow[]): Record<string, number> {
-  const inferred = Object.fromEntries(
-    players.map((player) => {
-      const roundTotal = (player.score_by_round ?? []).reduce((sum, value) => sum + numberFromUnknown(value, 0), 0);
-      const finalScore = numberFromUnknown(player.final_score, 0);
-      return [player.user_id, Math.round(finalScore - roundTotal)];
-    })
-  ) as Record<string, number>;
-
-  // Prefer persisted final score deltas; they are authoritative for pudding points
-  // even if `game_players.puddings` is stale or inconsistent.
-  if (players.length > 0) {
-    return inferred;
-  }
-
   const result = Object.fromEntries(players.map((p) => [p.user_id, 0])) as Record<string, number>;
   if (players.length === 0) return result;
 
-  const puddings = players.map((p) => ({ id: p.user_id, count: p.puddings }));
-  const max = Math.max(...puddings.map((p) => p.count));
-  const min = Math.min(...puddings.map((p) => p.count));
-
-  const top = puddings.filter((p) => p.count === max);
-  top.forEach((p) => {
-    result[p.id] += Math.floor(6 / top.length);
+  const puddingCounts = players.map((player) => numberFromUnknown(player.puddings, 0));
+  const puddingPoints = scorePuddings(puddingCounts);
+  players.forEach((player, index) => {
+    result[player.user_id] = puddingPoints[index] ?? 0;
   });
-
-  if (players.length > 2 && max !== min) {
-    const bottom = puddings.filter((p) => p.count === min);
-    bottom.forEach((p) => {
-      result[p.id] -= Math.floor(6 / bottom.length);
-    });
-  }
 
   return result;
 }
 
-function toPodiumPlayers(players: GamePlayerRow[]): PlayerStat[] {
-  const puddingPoints = computePuddingPoints(players);
+function buildCanonicalPlayers(players: GamePlayerRow[]): CanonicalPlayer[] {
+  const puddingPointsByPlayer = computePuddingPoints(players);
+
+  return players.map((player) => {
+    const normalizedPuddings = numberFromUnknown(player.puddings, 0);
+    const puddingPoints = puddingPointsByPlayer[player.user_id] ?? 0;
+    const scoreByRound = Array.isArray(player.score_by_round) ? player.score_by_round : [];
+    const roundScore = scoreByRound.reduce((sum, value) => sum + numberFromUnknown(value, 0), 0);
+    const finalScoreRaw = numberFromUnknown(player.final_score, 0);
+    const hasRoundBreakdown = scoreByRound.length > 0;
+
+    // Canonicalizamos el puntaje final para evitar desfaces cuando final_score
+    // no refleja correctamente el ajuste final de pudines.
+    const totalScore = hasRoundBreakdown ? roundScore + puddingPoints : finalScoreRaw;
+
+    return {
+      ...player,
+      normalizedPuddings,
+      puddingPoints,
+      totalScore,
+    };
+  });
+}
+
+function toPodiumPlayers(players: CanonicalPlayer[]): PlayerStat[] {
   const ranked = [...players].sort((a, b) => {
-    if (b.final_score !== a.final_score) return b.final_score - a.final_score;
-    const bPudding = puddingPoints[b.user_id] ?? 0;
-    const aPudding = puddingPoints[a.user_id] ?? 0;
-    if (bPudding !== aPudding) return bPudding - aPudding;
-    return b.puddings - a.puddings;
+    if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+    if (b.puddingPoints !== a.puddingPoints) return b.puddingPoints - a.puddingPoints;
+    return b.normalizedPuddings - a.normalizedPuddings;
   });
 
   return ranked.map((player, index) => ({
     id: player.user_id,
     name: player.display_name,
-    score: player.final_score,
-    puddingScore: puddingPoints[player.user_id] ?? 0,
+    score: player.totalScore,
+    puddings: player.normalizedPuddings,
+    puddingScore: player.puddingPoints,
     rank: index + 1,
     colorHex: colorFromSeed(player.user_id),
   }));
 }
 
-function readHighlightMetrics(highlights: Record<string, unknown>, players: GamePlayerRow[]): HighlightStats {
-  const defaultPlayer = players[0]?.display_name ?? "Sin datos";
+function readHighlightMetrics(
+  highlights: Record<string, unknown>,
+  players: GamePlayerRow[],
+  persistedCardPlayCount?: Record<string, unknown> | null,
+  persistedPointsByCard?: Record<string, unknown> | null
+): HighlightStats {
+  const defaultPlayer = "Sin datos";
+
+  const cardPlayCountMap =
+    persistedCardPlayCount ??
+    pickDeepRecord(highlights, ["cardPlayCount", "card_play_count", "cardCounts", "cardsPlayedByType"]) ??
+    {};
+  const pointsByCardMap =
+    persistedPointsByCard ??
+    pickDeepRecord(highlights, ["totalPointsByCard", "total_points_by_card", "pointsByCard", "cardPointsMap"]) ??
+    {};
+
+  const mostPlayedFromMap = Object.entries(cardPlayCountMap)
+    .map(([card, value]) => ({ card, count: numberFromUnknown(value, 0) }))
+    .sort((a, b) => b.count - a.count)[0];
+
+  const bestCardFromMap = Object.entries(pointsByCardMap)
+    .map(([card, value]) => ({ card, points: numberFromUnknown(value, 0) }))
+    .sort((a, b) => b.points - a.points)[0];
 
   const fastestName =
     stringFromUnknown(highlights.fastestPlayer) ||
     stringFromUnknown(highlights.fastest_player) ||
-    defaultPlayer;
+    pickDeepString(highlights, ["fastestPlayer", "fastest_player", "fastestPlayerId", "fastest_player_id"]);
   const slowestName =
     stringFromUnknown(highlights.slowestPlayer) ||
     stringFromUnknown(highlights.slowest_player) ||
-    defaultPlayer;
+    pickDeepString(highlights, ["slowestPlayer", "slowest_player", "slowestPlayerId", "slowest_player_id"]);
 
   const fastestCard =
     stringFromUnknown(highlights.fastestCard) ||
-    stringFromUnknown(highlights.fastest_card) ||
-    "nigiri_salmon";
+    stringFromUnknown(highlights.fastest_card);
   const slowestCard =
     stringFromUnknown(highlights.slowestCard) ||
-    stringFromUnknown(highlights.slowest_card) ||
-    "tempura";
+    stringFromUnknown(highlights.slowest_card);
 
   const mostPlayedCard =
     stringFromUnknown(highlights.mostPlayedCard) ||
     stringFromUnknown(highlights.most_played_card) ||
-    "maki_2";
+    stringFromUnknown(mostPlayedFromMap?.card);
 
   const mostPlayedCount =
     numberFromUnknown(highlights.mostPlayedCount, 0) ||
     numberFromUnknown(highlights.most_played_count, 0) ||
+    numberFromUnknown(mostPlayedFromMap?.count, 0) ||
     0;
 
   // Do NOT fall back to a player's best round total for "most profitable card";
@@ -302,37 +415,80 @@ function readHighlightMetrics(highlights: Record<string, unknown>, players: Game
   const bestPointsCard =
     stringFromUnknown(highlights.cardMostPoints) ||
     stringFromUnknown(highlights.mostProfitableCard) ||
-    mostPlayedCard;
+    stringFromUnknown(bestCardFromMap?.card);
   const bestPointsPlayer =
     stringFromUnknown(highlights.cardMostPointsPlayer) ||
     stringFromUnknown(highlights.mostProfitableCardPlayer) ||
-    stringFromUnknown(highlights.card_most_points_player) ||
-    defaultPlayer;
+    stringFromUnknown(highlights.card_most_points_player);
   const bestPointsValue =
     numberFromUnknown(highlights.totalPointsByBestCard, 0) ||
     numberFromUnknown(highlights.cardMostPointsValue, 0) ||
     numberFromUnknown(highlights.total_points_by_best_card, 0) ||
+    numberFromUnknown(bestCardFromMap?.points, 0) ||
     0;
+
+  const fastestRawSeconds =
+    numberFromUnknown(highlights.fastestTimeSeconds, 0) ||
+    numberFromUnknown(highlights.fastest_time_seconds, 0) ||
+    pickDeepNumber(highlights, ["fastestTimeSeconds", "fastest_time_seconds"], 0);
+  const fastestRawMs = pickDeepNumber(highlights, ["fastestPlayMs", "fastest_play_ms", "fastestTimeMs", "fastest_time_ms"], 0);
+  const slowestRawSeconds =
+    numberFromUnknown(highlights.slowestTimeSeconds, 0) ||
+    numberFromUnknown(highlights.slowest_time_seconds, 0) ||
+    pickDeepNumber(highlights, ["slowestTimeSeconds", "slowest_time_seconds"], 0);
+  const slowestRawMs = pickDeepNumber(highlights, ["slowestPlayMs", "slowest_play_ms", "slowestTimeMs", "slowest_time_ms"], 0);
+
+  const fastestSeconds = fastestRawSeconds > 0 ? fastestRawSeconds : fastestRawMs > 0 ? fastestRawMs / 1000 : 0;
+  const slowestSeconds = slowestRawSeconds > 0 ? slowestRawSeconds : slowestRawMs > 0 ? slowestRawMs / 1000 : 0;
 
   return {
     fastestPlay: {
-      playerName: fastestName,
-      fastestTime: numberFromUnknown(highlights.fastestTimeSeconds, 0) || numberFromUnknown(highlights.fastest_time_seconds, 0) || 0,
-      cardId: cardKey(fastestCard),
+      playerName: fastestName || defaultPlayer,
+      fastestTime: fastestSeconds,
+      cardId: fastestCard ? cardKey(fastestCard) : "unknown",
     },
     slowestPlay: {
-      playerName: slowestName,
-      slowestTime: numberFromUnknown(highlights.slowestTimeSeconds, 0) || numberFromUnknown(highlights.slowest_time_seconds, 0) || 0,
-      cardId: cardKey(slowestCard),
+      playerName: slowestName || defaultPlayer,
+      slowestTime: slowestSeconds,
+      cardId: slowestCard ? cardKey(slowestCard) : "unknown",
     },
     mostPlayedCard: {
-      cardId: cardKey(mostPlayedCard),
+      cardId: mostPlayedCard ? cardKey(mostPlayedCard) : "unknown",
       count: Math.max(0, Math.round(mostPlayedCount)),
     },
     mostProfitableCard: {
-      cardId: cardKey(bestPointsCard),
+      cardId: bestPointsCard ? cardKey(bestPointsCard) : "unknown",
       totalPointsGenerated: Math.max(0, Math.round(bestPointsValue)),
-      playerName: bestPointsPlayer,
+      playerName: bestPointsPlayer || defaultPlayer,
+    },
+  };
+}
+
+function normalizeForensicStats(
+  stats: HighlightStats,
+  _players: CanonicalPlayer[],
+  totalDurationMs: number | null
+): HighlightStats {
+  void totalDurationMs;
+  return {
+    fastestPlay: {
+      playerName: stats.fastestPlay.playerName || "Sin datos",
+      fastestTime: stats.fastestPlay.fastestTime > 0 ? stats.fastestPlay.fastestTime : 0,
+      cardId: stats.fastestPlay.cardId || "unknown",
+    },
+    slowestPlay: {
+      playerName: stats.slowestPlay.playerName || "Sin datos",
+      slowestTime: stats.slowestPlay.slowestTime > 0 ? stats.slowestPlay.slowestTime : 0,
+      cardId: stats.slowestPlay.cardId || "unknown",
+    },
+    mostPlayedCard: {
+      cardId: stats.mostPlayedCard.cardId || "unknown",
+      count: stats.mostPlayedCard.count > 0 ? stats.mostPlayedCard.count : 0,
+    },
+    mostProfitableCard: {
+      cardId: stats.mostProfitableCard.cardId || "unknown",
+      totalPointsGenerated: stats.mostProfitableCard.totalPointsGenerated > 0 ? stats.mostProfitableCard.totalPointsGenerated : 0,
+      playerName: stats.mostProfitableCard.playerName || "Sin datos",
     },
   };
 }
@@ -341,12 +497,23 @@ function resolveWinnerName(highlights: Record<string, unknown>, keys: string[], 
   const nestedCandidateKeys = ["playerName", "player", "winner", "userName", "displayName", "playerId", "userId", "id"];
 
   for (const key of keys) {
-    const raw = highlights[key];
+    const raw = highlights[key] ?? pickDeepValueByKeys(highlights, [key]);
     const asName = toPlayerName(raw, players);
     if (asName) return asName;
 
     if (raw && typeof raw === "object") {
       const record = raw as Record<string, unknown>;
+
+      // Handle maps like { "player_id": 3, ... } by taking max numeric value.
+      const numericWinner = Object.entries(record)
+        .map(([candidate, value]) => ({ candidate, score: numberFromUnknown(value, Number.NaN) }))
+        .filter((entry) => Number.isFinite(entry.score))
+        .sort((a, b) => b.score - a.score)[0];
+      if (numericWinner) {
+        const mapped = toPlayerName(numericWinner.candidate, players);
+        if (mapped) return mapped;
+      }
+
       for (const nestedKey of nestedCandidateKeys) {
         const nested = toPlayerName(record[nestedKey], players);
         if (nested) return nested;
@@ -356,20 +523,153 @@ function resolveWinnerName(highlights: Record<string, unknown>, keys: string[], 
   return null;
 }
 
-function buildAchievements(players: GamePlayerRow[], highlights: Record<string, unknown>): Achievement[] {
-  const winnerByPudding = [...players].sort((a, b) => b.puddings - a.puddings)[0]?.display_name ?? null;
-  const champion = [...players].sort((a, b) => b.final_score - a.final_score)[0]?.display_name ?? null;
+function resolveWinnerFromPerPlayerCounters(
+  highlights: Record<string, unknown>,
+  players: GamePlayerRow[],
+  counterMapKeys: string[],
+  metricKeys: string[]
+): string | null {
+  const normalizedMetricKeys = metricKeys.map(normalizeKey);
 
-  const roundWinners: string[] = [0, 1, 2].map((roundIndex) => {
+  for (const mapKey of counterMapKeys) {
+    const record = pickDeepRecord(highlights, [mapKey]);
+    if (!record) continue;
+
+    const directNumeric = Object.entries(record)
+      .map(([candidate, value]) => ({ candidate, score: numberFromUnknown(value, Number.NaN) }))
+      .filter((entry) => Number.isFinite(entry.score))
+      .sort((a, b) => b.score - a.score)[0];
+
+    if (directNumeric && directNumeric.score > 0) {
+      const mapped = toPlayerName(directNumeric.candidate, players);
+      if (mapped) return mapped;
+    }
+
+    const metricBucket = Object.entries(record).find(([key]) => normalizedMetricKeys.includes(normalizeKey(key)));
+    if (metricBucket && metricBucket[1] && typeof metricBucket[1] === "object" && !Array.isArray(metricBucket[1])) {
+      const metricRecord = metricBucket[1] as Record<string, unknown>;
+      const winnerFromMetric = Object.entries(metricRecord)
+        .map(([candidate, value]) => ({ candidate, score: numberFromUnknown(value, Number.NaN) }))
+        .filter((entry) => Number.isFinite(entry.score))
+        .sort((a, b) => b.score - a.score)[0];
+
+      if (winnerFromMetric && winnerFromMetric.score > 0) {
+        const mapped = toPlayerName(winnerFromMetric.candidate, players);
+        if (mapped) return mapped;
+      }
+    }
+
+    const nestedPerPlayer = Object.entries(record)
+      .map(([candidate, value]) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return { candidate, score: Number.NaN };
+        const nested = value as Record<string, unknown>;
+        const score = Object.entries(nested)
+          .filter(([nestedKey]) => normalizedMetricKeys.includes(normalizeKey(nestedKey)))
+          .map(([, nestedValue]) => numberFromUnknown(nestedValue, Number.NaN))
+          .filter((nestedScore) => Number.isFinite(nestedScore))[0];
+
+        return { candidate, score: score ?? Number.NaN };
+      })
+      .filter((entry) => Number.isFinite(entry.score))
+      .sort((a, b) => b.score - a.score)[0];
+
+    if (nestedPerPlayer && nestedPerPlayer.score > 0) {
+      const mapped = toPlayerName(nestedPerPlayer.candidate, players);
+      if (mapped) return mapped;
+    }
+  }
+
+  return null;
+}
+
+function buildAchievements(players: CanonicalPlayer[], highlights: Record<string, unknown>, stats: HighlightStats): Achievement[] {
+  const winnerByPudding = [...players].sort((a, b) => b.normalizedPuddings - a.normalizedPuddings)[0]?.display_name ?? null;
+  const champion = [...players].sort((a, b) => b.totalScore - a.totalScore)[0]?.display_name ?? null;
+
+  const totalRounds = Math.max(...players.map((player) => player.score_by_round?.length ?? 0), 0);
+  const roundWinners: string[] = Array.from({ length: totalRounds }, (_, roundIndex) => {
     const sorted = [...players].sort((a, b) => (b.score_by_round?.[roundIndex] ?? 0) - (a.score_by_round?.[roundIndex] ?? 0));
     return sorted[0]?.display_name ?? "";
   });
 
-  const sweepWinner = roundWinners[0] && roundWinners.every((name) => name === roundWinners[0]) ? roundWinners[0] : null;
+  const sweepWinner =
+    totalRounds > 0 && roundWinners[0] && roundWinners.every((name) => name === roundWinners[0])
+      ? roundWinners[0]
+      : null;
 
-  const round2Ordered = [...players].sort((a, b) => (a.score_by_round?.[1] ?? 0) - (b.score_by_round?.[1] ?? 0));
+  const round2Ordered = totalRounds >= 2
+    ? [...players].sort((a, b) => (a.score_by_round?.[1] ?? 0) - (b.score_by_round?.[1] ?? 0))
+    : [];
   const lastOnRound2 = round2Ordered[0]?.display_name ?? null;
-  const comeback = lastOnRound2 && champion && lastOnRound2 === champion ? champion : null;
+  const comeback = totalRounds >= 2 && lastOnRound2 && champion && lastOnRound2 === champion ? champion : null;
+
+  const chopsticksWinner =
+    resolveWinnerName(
+      highlights,
+      [
+        "chopsticksMaster",
+        "chopsticks_master",
+        "chopsticksMasterId",
+        "chopsticks_master_id",
+        "mostChopsticksPlayer",
+        "most_chopsticks_player",
+        "mostChopsticksUsedPlayer",
+        "most_chopsticks_used_player",
+        "mostChopsticksUsed",
+        "most_chopsticks_used",
+      ],
+      players
+    ) ??
+    resolveWinnerFromPerPlayerCounters(
+      highlights,
+      players,
+      [
+        "chopsticksUsageByPlayer",
+        "chopsticks_usage_by_player",
+        "cardPlayCountByPlayer",
+        "card_play_count_by_player",
+        "cardsPlayedByPlayer",
+        "cards_played_by_player",
+      ],
+      ["chopsticks", "palillos", "chopsticksUsed", "chopsticks_used"]
+    );
+
+  const wasabiWinner =
+    resolveWinnerName(
+      highlights,
+      [
+        "wasabiSniper",
+        "wasabi_sniper",
+        "wasabiSniperId",
+        "wasabi_sniper_id",
+        "mostWasabiPlayer",
+        "most_wasabi_player",
+        "mostWasabiUsedPlayer",
+        "most_wasabi_used_player",
+        "mostWasabiUsed",
+        "most_wasabi_used",
+        "wasabiMaster",
+        "wasabi_master",
+      ],
+      players
+    ) ??
+    resolveWinnerFromPerPlayerCounters(
+      highlights,
+      players,
+      [
+        "wasabiUsageByPlayer",
+        "wasabi_usage_by_player",
+        "cardPlayCountByPlayer",
+        "card_play_count_by_player",
+        "cardsPlayedByPlayer",
+        "cards_played_by_player",
+      ],
+      ["wasabi", "wasabiUsed", "wasabi_used", "wasabiCount", "wasabi_count"]
+    ) ??
+    resolveWinnerFromTurnMetrics(players, ["wasabi", "wasabiused", "wasabicount", "nigirionwasabi", "wasabisniper"]);
+
+  const resolvedChopsticksWinner =
+    chopsticksWinner ?? resolveWinnerFromTurnMetrics(players, ["chopsticks", "palillos", "chopsticksused", "chopstickscount"]);
 
   const achievements: Achievement[] = [
     {
@@ -377,7 +677,9 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Rey del Maki",
       accent: "#FFE66D",
       icon: makisX3Img,
-      winnerPlayerName: resolveWinnerName(highlights, ["makiKing", "maki_king", "mostMakiPlayer", "makiKingPlayer", "maki_king_player", "mostMakiPlayerId"], players),
+      winnerPlayerName:
+        resolveWinnerName(highlights, ["makiKing", "maki_king", "mostMakiPlayer", "makiKingPlayer", "maki_king_player", "mostMakiPlayerId"], players) ??
+        champion,
       description: "Más íconos de maki",
     },
     {
@@ -393,7 +695,8 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Rayo",
       accent: "#4ECDC4",
       icon: nigiriSalmonImg,
-      winnerPlayerName: resolveWinnerName(highlights, ["fastestPlayer", "fastest_player", "fastestPlayerId", "fastest_player_id"], players),
+      winnerPlayerName:
+        resolveWinnerName(highlights, ["fastestPlayer", "fastest_player", "fastestPlayerId", "fastest_player_id"], players),
       description: "Promedio de jugada más bajo",
     },
     {
@@ -401,7 +704,8 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Sin Prisa",
       accent: "#93C5FD",
       icon: tempuraImg,
-      winnerPlayerName: resolveWinnerName(highlights, ["slowestPlayer", "slowest_player", "slowestPlayerId", "slowest_player_id"], players),
+      winnerPlayerName:
+        resolveWinnerName(highlights, ["slowestPlayer", "slowest_player", "slowestPlayerId", "slowest_player_id"], players),
       description: "Promedio de jugada más alto",
     },
     {
@@ -409,7 +713,7 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Palillo Pro",
       accent: "#4ECDC4",
       icon: palillosImg,
-      winnerPlayerName: resolveWinnerName(highlights, ["chopsticksMaster", "chopsticks_master", "chopsticksMasterId", "chopsticks_master_id"], players),
+      winnerPlayerName: resolvedChopsticksWinner,
       description: "Más usos de palillos",
     },
     {
@@ -417,7 +721,7 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       name: "Wasabi Sniper",
       accent: "#6EE7B7",
       icon: wasabiImg,
-      winnerPlayerName: resolveWinnerName(highlights, ["wasabiSniper", "wasabi_sniper", "wasabiSniperId", "wasabi_sniper_id"], players),
+      winnerPlayerName: wasabiWinner,
       description: "Más nigiris sobre wasabi",
     },
     {
@@ -441,7 +745,7 @@ function buildAchievements(players: GamePlayerRow[], highlights: Record<string, 
       accent: "#FFE66D",
       icon: "👑",
       winnerPlayerName: sweepWinner,
-      description: "Ganó las 3 rondas",
+      description: `Ganó las ${Math.max(1, totalRounds)} rondas`,
     },
     {
       id: "comeback",
@@ -466,6 +770,7 @@ export default function ScoreboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<LoadedState | null>(null);
+  const [showWinnerIntro, setShowWinnerIntro] = useState(false);
 
   const isRoomCodeValid = roomCode.length > 0;
 
@@ -490,6 +795,7 @@ export default function ScoreboardPage() {
         .from("games")
         .select("id, room_id, status, ended_at, started_at")
         .eq("room_id", room.id)
+        .in("status", ["WAITING_SCOREBOARD", "FINISHED", "FINAL_PODIUM"])
         .order("started_at", { ascending: false })
         .limit(1)
         .single();
@@ -511,10 +817,10 @@ export default function ScoreboardPage() {
       const [playersRes, roundsRes, historyRes] = await Promise.all([
         supabase
           .from("game_players")
-          .select("game_id, user_id, display_name, final_score, puddings, score_by_round")
+          .select("game_id, user_id, display_name, final_score, puddings, score_by_round, turn_metrics")
           .eq("game_id", game.id),
         supabase.from("round_summaries").select("game_id, round, payload").eq("game_id", game.id),
-        supabase.from("match_history").select("game_id, total_duration_ms, highlights").eq("game_id", game.id).maybeSingle(),
+        supabase.from("match_history").select("game_id, total_duration_ms, card_play_count, total_points_by_card, highlights").eq("game_id", game.id).maybeSingle(),
       ]);
 
       if (playersRes.error || roundsRes.error || historyRes.error) {
@@ -525,33 +831,21 @@ export default function ScoreboardPage() {
 
       const loadedPlayers = (playersRes.data ?? []) as GamePlayerRow[];
       const loadedHistory = (historyRes.data ?? null) as MatchHistoryRow | null;
-      const computedStats = readHighlightMetrics(loadedHistory?.highlights ?? {}, loadedPlayers);
+      const canonicalPlayers = buildCanonicalPlayers(loadedPlayers);
+      const computedStats = normalizeForensicStats(
+        readHighlightMetrics(
+          loadedHistory?.highlights ?? {},
+          canonicalPlayers,
+          (loadedHistory?.card_play_count as Record<string, unknown> | undefined) ?? null,
+          (loadedHistory?.total_points_by_card as Record<string, unknown> | undefined) ?? null
+        ),
+        canonicalPlayers,
+        loadedHistory?.total_duration_ms ?? 0
+      );
       const canonicalHighlights: Record<string, unknown> = {
         ...(loadedHistory?.highlights ?? {}),
-        mostProfitableCard: computedStats.mostProfitableCard.cardId,
-        mostProfitableCardPlayer: computedStats.mostProfitableCard.playerName,
-        totalPointsByBestCard: computedStats.mostProfitableCard.totalPointsGenerated,
-        cardMostPoints: computedStats.mostProfitableCard.cardId,
-        cardMostPointsPlayer: computedStats.mostProfitableCard.playerName,
-        cardMostPointsValue: computedStats.mostProfitableCard.totalPointsGenerated,
       };
-
-      const shouldPersistHighlights =
-        stringFromUnknown(loadedHistory?.highlights?.mostProfitableCard) !== computedStats.mostProfitableCard.cardId ||
-        stringFromUnknown(loadedHistory?.highlights?.mostProfitableCardPlayer) !== computedStats.mostProfitableCard.playerName ||
-        numberFromUnknown(loadedHistory?.highlights?.totalPointsByBestCard, -1) !== computedStats.mostProfitableCard.totalPointsGenerated;
-
-      if (shouldPersistHighlights) {
-        const persistedDuration = loadedHistory?.total_duration_ms ?? 0;
-        await supabase.from("match_history").upsert(
-          {
-            game_id: game.id,
-            total_duration_ms: persistedDuration,
-            highlights: canonicalHighlights,
-          },
-          { onConflict: "game_id" }
-        );
-      }
+      void computedStats;
 
       setState({
         game,
@@ -563,6 +857,7 @@ export default function ScoreboardPage() {
           highlights: canonicalHighlights,
         },
       });
+      setShowWinnerIntro(true);
       setLoading(false);
     };
 
@@ -572,18 +867,45 @@ export default function ScoreboardPage() {
   const data = useMemo(() => {
     if (!state) return null;
 
-    const scoreboardPlayers = toPodiumPlayers(state.players);
+    const canonicalPlayers = buildCanonicalPlayers(state.players);
+    const scoreboardPlayers = toPodiumPlayers(canonicalPlayers);
     const highlights = state.history?.highlights ?? {};
+    const normalizedStats = normalizeForensicStats(
+      readHighlightMetrics(
+        highlights,
+        canonicalPlayers,
+        (state.history?.card_play_count as Record<string, unknown> | undefined) ?? null,
+        (state.history?.total_points_by_card as Record<string, unknown> | undefined) ?? null
+      ),
+      canonicalPlayers,
+      state.history?.total_duration_ms ?? null
+    );
 
     return {
       roomCode,
       statusText: state.game.status,
       players: scoreboardPlayers,
-      achievements: buildAchievements(state.players, highlights),
-      stats: readHighlightMetrics(highlights, state.players),
+      achievements: buildAchievements(canonicalPlayers, highlights, normalizedStats),
+      stats: normalizedStats,
       totalDurationMs: state.history?.total_duration_ms ?? null,
     };
   }, [roomCode, state]);
+
+  useEffect(() => {
+    if (!showWinnerIntro) return;
+    if (!data?.players?.[0]) {
+      setShowWinnerIntro(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowWinnerIntro(false);
+    }, 2400);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [data, showWinnerIntro]);
 
   if (loading) {
     return <LoadingFinalScoreboard />;
@@ -607,15 +929,54 @@ export default function ScoreboardPage() {
   }
 
   return (
-    <FinalScoreboard
-      roomCode={data.roomCode}
-      statusText={data.statusText}
-      players={data.players}
-      achievements={data.achievements}
-      stats={data.stats}
-      totalDurationMs={data.totalDurationMs}
-      onRematch={() => router.push(`/lobby/${roomCode}`)}
-      onHome={() => router.push("/")}
-    />
+    <>
+      <FinalScoreboard
+        roomCode={data.roomCode}
+        statusText={data.statusText}
+        players={data.players}
+        achievements={data.achievements}
+        stats={data.stats}
+        totalDurationMs={data.totalDurationMs}
+        onRematch={() => router.push(`/lobby/${roomCode}`)}
+        onHome={() => router.push("/")}
+      />
+
+      <AnimatePresence>
+        {showWinnerIntro && data.players[0] && (
+          <motion.div
+            key={`winner-intro-${data.players[0].id}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35 }}
+            className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: [0, 0.7, 0.35], scale: [0.7, 1.12, 1.35] }}
+              transition={{ duration: 1.75, ease: "easeOut" }}
+              className="absolute h-[76vh] w-[76vh] rounded-full bg-amber-300/30 blur-3xl"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.82, y: 28 }}
+              animate={{ opacity: [0, 1, 1], scale: [0.82, 1.06, 1], y: [28, 0, 0] }}
+              transition={{ duration: 0.85, ease: "easeOut" }}
+              className="relative overflow-hidden rounded-3xl border border-white/35 bg-black/60 px-12 py-8 text-center shadow-[0_28px_70px_rgba(0,0,0,0.72)] backdrop-blur-md"
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.22),rgba(255,255,255,0)_56%)]" />
+              <Image src="/sushigo-logo.png" alt="Sushi Go" width={160} height={78} className="relative mx-auto h-auto w-[140px] drop-shadow-[0_8px_16px_rgba(0,0,0,0.75)]" priority />
+              <p className="relative mt-2 font-heading text-3xl uppercase tracking-[0.22em] text-[#f8deb1]">Ganador Final</p>
+              <p className="relative mt-3 font-heading text-6xl font-black leading-none text-[#FFE66D] drop-shadow-[0_8px_24px_rgba(251,191,36,0.9)]">
+                {data.players[0].name}
+              </p>
+              <p className="relative mt-2 text-sm font-semibold uppercase tracking-[0.12em] text-white/80">
+                {data.players[0].score} pts totales
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

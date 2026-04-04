@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -10,7 +10,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { ensureGuestUser } from "@/lib/guest-session";
 import { playSfx } from "@/lib/audio";
 
-type JoinRoomModalProps = { open: boolean; onOpenChange: (open: boolean) => void; };
+type JoinRoomModalProps = { open: boolean; onOpenChange: (open: boolean) => void; initialRoomCode?: string; };
 
 type JoinRoomRpcRow = { room_id: string; room_code: string; seat_index: number; };
 
@@ -24,13 +24,19 @@ function mapJoinRoomError(message: string): string {
   return message;
 }
 
-export function JoinRoomModal({ open, onOpenChange }: JoinRoomModalProps) {
+export function JoinRoomModal({ open, onOpenChange, initialRoomCode }: JoinRoomModalProps) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!initialRoomCode) return;
+    setRoomCode(initialRoomCode.toUpperCase());
+  }, [initialRoomCode, open]);
 
   const disabled = useMemo(() => loading || displayName.trim().length < 2 || roomCode.trim().length < 4, [displayName, loading, roomCode]);
 

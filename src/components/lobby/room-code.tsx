@@ -11,13 +11,22 @@ import makiImg from "@/app/assets/illustrations/maki-illustration-x2.png";
 type RoomCodeProps = { roomCode: string; };
 
 export function RoomCode({ roomCode }: RoomCodeProps) {
-  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const copyCode = async () => {
     playSfx("reveal");
     await navigator.clipboard.writeText(roomCode);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+    setCopiedCode(true);
+    window.setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const copyInviteLink = async () => {
+    playSfx("reveal");
+    const inviteLink = `${window.location.origin}/?join=${encodeURIComponent(roomCode)}`;
+    await navigator.clipboard.writeText(inviteLink);
+    setCopiedLink(true);
+    window.setTimeout(() => setCopiedLink(false), 2000);
   };
 
   return (
@@ -31,19 +40,37 @@ export function RoomCode({ roomCode }: RoomCodeProps) {
         <div className="relative flex flex-col items-center gap-4 rounded-xl border-2 border-cyan-900/50 bg-black/60 p-4 shadow-[inset_0_8px_16px_rgba(0,0,0,0.8)]">
             <p className="font-heading text-4xl sm:text-5xl tracking-[0.1em] text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.4)] animate-pulse ml-2">{roomCode}</p>      
             
-            <Button 
-                className="w-full h-14 rounded-xl border-b-4 border-cyan-900 bg-cyan-700 font-bold uppercase tracking-widest text-white shadow-[inset_0_2px_4px_rgba(255,255,255,0.2),0_4px_8px_rgba(34,211,238,0.2)] transition-all hover:-translate-y-1 hover:bg-cyan-600 hover:shadow-[inset_0_2px_4px_rgba(255,255,255,0.3),0_8px_16px_rgba(34,211,238,0.4)] active:translate-y-1 active:border-b-0 active:mt-1 focus-visible:ring-cyan-500 overflow-hidden" 
-                onClick={copyCode}
+            <Button
+              className="w-full h-14 rounded-xl border-b-4 border-cyan-900 bg-cyan-700 font-bold uppercase tracking-widest text-white shadow-[inset_0_2px_4px_rgba(255,255,255,0.2),0_4px_8px_rgba(34,211,238,0.2)] transition-all hover:-translate-y-1 hover:bg-cyan-600 hover:shadow-[inset_0_2px_4px_rgba(255,255,255,0.3),0_8px_16px_rgba(34,211,238,0.4)] active:translate-y-1 active:border-b-0 active:mt-1 focus-visible:ring-cyan-500 overflow-hidden"
+              onClick={copyCode}
             >
               <AnimatePresence mode="popLayout" initial={false}>
-                {copied ? (
-                   <motion.div key="copied" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2 text-amber-300">
-                     ¡COPIADO!
-                   </motion.div> 
+                {copiedCode ? (
+                  <motion.div key="copied-code" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2 text-amber-300">
+                    ¡CÓDIGO COPIADO!
+                  </motion.div>
                 ) : (
-                   <motion.div key="copy" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2">
-                     COPIAR CÓDIGO
-                   </motion.div>
+                  <motion.div key="copy-code" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2">
+                    COPIAR CÓDIGO
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Button>
+
+            <Button
+              className="w-full h-12 rounded-xl border-b-4 border-indigo-900 bg-indigo-700 font-bold uppercase tracking-widest text-white shadow-[inset_0_2px_4px_rgba(255,255,255,0.2),0_4px_8px_rgba(79,70,229,0.2)] transition-all hover:-translate-y-1 hover:bg-indigo-600 hover:shadow-[inset_0_2px_4px_rgba(255,255,255,0.3),0_8px_16px_rgba(79,70,229,0.4)] active:translate-y-1 active:border-b-0 active:mt-1 focus-visible:ring-indigo-500 overflow-hidden"
+              onClick={copyInviteLink}
+              style={{ backgroundColor: "#4338ca", borderColor: "#312e81" }}
+            >
+              <AnimatePresence mode="popLayout" initial={false}>
+                {copiedLink ? (
+                  <motion.div key="copied-link" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2 text-amber-300">
+                    ¡LINK COPIADO!
+                  </motion.div>
+                ) : (
+                  <motion.div key="copy-link" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="flex items-center gap-2">
+                    COPIAR LINK
+                  </motion.div>
                 )}
               </AnimatePresence>
             </Button>

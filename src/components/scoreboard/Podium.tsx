@@ -1,5 +1,6 @@
 "use client";
 
+import { ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ConfettiEffect } from "./ConfettiEffect";
 import Image from "next/image";
@@ -10,10 +11,25 @@ export type PlayerStat = {
   id: string;
   name: string;
   score: number;
+  puddings: number;
   puddingScore: number;
   rank: number;
   colorHex: string;
 };
+
+function formatPuddingDelta(points: number): ReactNode {
+  if (points > 0)
+    return (
+      <span className="text-[10px] text-white">(+{points} <span className="text-[9px]">pt.</span>)</span>
+    );
+  if (points < 0)
+    return (
+      <span className="text-[10px] text-white">({points} <span className="text-[9px]">pt.</span>)</span>
+    );
+  return (
+    <span className="text-[10px] text-white">(0 <span className="text-[9px]">pt.</span>)</span>
+  );
+}
 
 interface PodiumProps {
   players: PlayerStat[];
@@ -124,9 +140,10 @@ export function Podium({ players }: PodiumProps) {
                 </div>
                 <div className="flex flex-col max-w-[80px]">
                   <span className="font-bold text-[13px] leading-none text-white truncate">{p.name}</span>
-                  <div className="flex gap-1 mt-1">
-                     <Image src={pudinImg} alt="P" width={10} height={10} className="object-contain" />
-                     <span className="text-[10px] font-bold text-[#f9a8d4] leading-none">{p.puddingScore}</span>
+                  <div className="mt-1 flex items-center gap-1 leading-none">
+                    <Image src={pudinImg} alt="P" width={10} height={10} className="object-contain" />
+                    <span className="text-[10px] font-bold text-[#f9a8d4]">{p.puddings}</span>
+                    {formatPuddingDelta(p.puddingScore)}
                   </div>
                 </div>
               </div>
@@ -191,10 +208,13 @@ function PlayerAvatar({
          <span className="font-heading text-lg font-bold text-white drop-shadow-md leading-none truncate max-w-[100px] text-center">
            {player.name}
          </span>
-         <div className="flex items-center gap-1.5 bg-[#0a0406] px-2 py-0.5 rounded shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] mt-2">
-            <Image src={pudinImg} alt="Pudin" width={16} height={16} className="object-contain" />
-            <span className="text-sm font-bold text-[#f9a8d4] leading-none mb-0.5">{player.puddingScore}</span>
-         </div>
+        <div className="flex items-center gap-1.5 bg-[#0a0406] px-2 py-0.5 rounded shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] mt-2">
+          <Image src={pudinImg} alt="Pudin" width={16} height={16} className="object-contain" />
+          <div className="flex items-baseline gap-1 leading-none">
+            <span className="text-sm font-bold text-[#f9a8d4] leading-none">{player.puddings}</span>
+            {formatPuddingDelta(player.puddingScore)}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -86,7 +86,11 @@ export default function LobbyPage() {
   }, [loadLobby, room?.id]);
 
   useEffect(() => {
-    if (!room?.code || room.status === "LOBBY") return;
+    if (!room?.code) return;
+
+    const shouldEnterGame = room.status === "ROUND_1" || room.status === "ROUND_2" || room.status === "ROUND_3";
+    if (!shouldEnterGame) return;
+
     playSfx("whoosh");
     router.push(`/game/${room.code}`);
   }, [room?.code, room?.status, router]);

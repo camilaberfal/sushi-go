@@ -21,6 +21,14 @@ export function runRoundTests(): void {
   assertEqual(hands2.hands.length, 2, "2-player deal should have 2 hands");
   assertEqual(hands2.hands[0].length, 10, "2-player hand size should be 10");
 
+  const hands3 = dealHands(deck, 3);
+  assertEqual(hands3.hands.length, 3, "3-player deal should have 3 hands");
+  assertEqual(hands3.hands[0].length, 9, "3-player hand size should be 9");
+
+  const hands4 = dealHands(deck, 4);
+  assertEqual(hands4.hands.length, 4, "4-player deal should have 4 hands");
+  assertEqual(hands4.hands[0].length, 8, "4-player hand size should be 8");
+
   const hands5 = dealHands(deck, 5);
   assertEqual(hands5.hands.length, 5, "5-player deal should have 5 hands");
   assertEqual(hands5.hands[0].length, 7, "5-player hand size should be 7");

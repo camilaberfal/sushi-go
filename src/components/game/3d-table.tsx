@@ -101,6 +101,7 @@ export function TableView3D({
   }, [players, optimisticStackedDrop, currentPlayerId]);
 
   const activeOptimisticNigiriId = optimisticWasabiNigiriId ?? optimisticStackedDrop?.nigiriId ?? null;
+  const isMultiPlayerTable = players.length >= 3;
 
   return (
     <div
@@ -113,7 +114,8 @@ export function TableView3D({
       <TooltipProvider>
         <div
           className={cn(
-            "relative flex h-[50vh] w-[88vw] max-w-6xl flex-wrap items-center justify-center gap-12 rounded-[50px] border-4 border-white/5 shadow-[inset_0_20px_50px_rgba(0,0,0,0.8),0_40px_100px_rgba(0,0,0,0.9)] transition-all duration-300",
+            "relative flex w-[88vw] max-w-6xl flex-wrap items-center justify-center gap-12 overflow-hidden rounded-[50px] border-4 border-white/5 shadow-[inset_0_20px_50px_rgba(0,0,0,0.8),0_40px_100px_rgba(0,0,0,0.9)] transition-all duration-300",
+            isMultiPlayerTable ? "h-[54vh]" : "h-[50vh]",
             canDropCard && draggingCardId && "pointer-events-auto ring-[20px] ring-primary/20",
             !canDropCard && "opacity-80"
           )}
@@ -159,28 +161,48 @@ export function TableView3D({
           <div className="pointer-events-none absolute inset-0 rounded-[50px] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIvPjwvc3ZnPg==')] opacity-40 mix-blend-overlay" />
 
           {(() => {
+            const totalPlayers = players.length;
+            const isMultiPlayerCompactLayout = totalPlayers >= 3;
             const others = players.filter((p) => p.id !== currentPlayerId);
             const me = players.find((p) => p.id === currentPlayerId);
 
             const renderPlayer = (player: TablePlayer, isMe: boolean) => {
               const playedCards = player.playedCards;
+              const shouldUseSecondRowOverflow = isMultiPlayerCompactLayout && playedCards.length >= 6;
+              const shouldUseSingleCompactRow = isMultiPlayerCompactLayout && playedCards.length > 0 && playedCards.length <= 5;
+              const shouldWidenMyTray = !isMultiPlayerCompactLayout && isMe && playedCards.length === 11;
+              const shouldForceSingleRow = !isMultiPlayerCompactLayout && isMe && playedCards.length >= 10;
+              const cardSizeClass = isMultiPlayerCompactLayout ? "h-[4.15rem] w-[2.95rem]" : "h-32 w-[5.5rem]";
 
               return (
                 <div
                   key={player.id}
                   className={cn(
                     "relative z-10 flex flex-col items-center justify-center rounded-3xl border border-white/10 bg-black/20 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur-md",
-                    "min-h-[160px] min-w-[240px]"
+                    "min-h-[160px]",
+                    isMultiPlayerCompactLayout && shouldUseSecondRowOverflow && "min-w-[268px] max-w-[312px] px-2.5 py-2.5",
+                    isMultiPlayerCompactLayout && shouldUseSingleCompactRow && "min-w-[268px] max-w-[312px] px-3 py-2.5",
+                    !isMultiPlayerCompactLayout && "min-w-[240px]",
+                    shouldWidenMyTray && "min-w-[980px]"
                   )}
                   style={{ transform: "translateZ(10px)" }}
                 >
                   <div className={cn(
-                    "absolute -top-4 rounded-full border border-white/20 bg-black/60 px-4 py-1 text-sm font-semibold text-white/80 shadow-md"
+                    "absolute -top-4 max-w-[88%] rounded-full border border-white/20 bg-black/60 px-4 py-1 text-sm font-semibold text-white/80 shadow-md"
                   )}>
-                    {isMe ? "¡Tu lado!" : player.displayName}
+                    <span className="block truncate text-center">{isMe ? "¡Tu lado!" : player.displayName}</span>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap justify-center gap-3">
+                  <div
+                    className={cn(
+                      shouldUseSecondRowOverflow
+                        ? "mt-4 mx-auto flex w-[15.25rem] max-w-full flex-wrap justify-start gap-x-0.5 gap-y-1"
+                        : "mt-4 flex justify-center gap-2",
+                      shouldUseSingleCompactRow && "w-full flex-nowrap justify-center gap-0.5",
+                      !shouldUseSecondRowOverflow && !shouldUseSingleCompactRow && (shouldForceSingleRow ? "w-full flex-nowrap" : "flex-wrap"),
+                      !shouldUseSecondRowOverflow && shouldForceSingleRow && "gap-1.5"
+                    )}
+                  >
                     {playedCards.length > 0 ? (
                       (() => {
                         const groupedCards: { base: string; stacked: string[]; id: string }[] = [];
@@ -214,8 +236,8 @@ export function TableView3D({
                         return groupedCards.map((group, index) => {
                           const isPulsing = group.base.includes("wasabi") && group.stacked.length === 0;
                           const centerOffset = index - (groupedCards.length - 1) / 2;
-                          const sideBias = isMe ? 2 : -2;
-                          const baseRotation = centerOffset * 4 + sideBias;
+                          const sideBias = isMultiPlayerCompactLayout ? 0 : (isMe ? 2 : -2);
+                          const baseRotation = centerOffset * (isMultiPlayerCompactLayout ? 1.35 : 4) + sideBias;
                           const canSnapNigiriToWasabi =
                             isMe &&
                             canDropCard &&
@@ -281,11 +303,13 @@ export function TableView3D({
                                     initial={{ scale: 0.8, opacity: 0, rotateZ: baseRotation + (isMe ? 3 : -3) }}
                                     animate={{ scale: 1, opacity: 1, rotateZ: baseRotation }}
                                     className={cn(
-                                      "h-32 w-[5.5rem] rounded-xl object-cover shadow-[4px_12px_16px_rgba(0,0,0,0.6)]",
+                                        cardSizeClass,
+                                        isMultiPlayerCompactLayout ? "rounded-md" : "rounded-xl",
+                                        "object-cover shadow-[4px_12px_16px_rgba(0,0,0,0.6)]",
                                       isPulsing && "animate-pulse ring-2 ring-green-400/80 shadow-[0_0_20px_rgba(74,222,128,0.5)]"
                                     )}
                                     // if it has stacked cards, push it down slightly to simulate the stack
-                                    style={{ transform: group.stacked.length > 0 ? "translateY(5px)" : "none" }}
+                                    style={{ transform: group.stacked.length > 0 ? (isMultiPlayerCompactLayout ? "translateY(3px)" : "translateY(5px)") : "none" }}
                                     src={getCardAssetFromId(group.base)}
                                   />
                                 </TooltipTrigger>
@@ -300,7 +324,11 @@ export function TableView3D({
                                   initial={{ opacity: 0, y: -20, z: 20, rotateZ: baseRotation + (isMe ? 1 : -1) }}
                                   animate={{ opacity: 0.95, y: 8, z: 30, scale: 1, rotateZ: baseRotation + (isMe ? 3 : -3) }}
                                   transition={{ duration: 0.18, ease: "easeOut" }}
-                                  className="pointer-events-none absolute bottom-0 left-0 h-32 w-[5.5rem] rounded-xl object-cover shadow-[4px_14px_20px_rgba(0,0,0,0.85)]"
+                                  className={cn(
+                                    "pointer-events-none absolute bottom-0 left-0 object-cover shadow-[4px_14px_20px_rgba(0,0,0,0.85)]",
+                                    isMultiPlayerCompactLayout ? "rounded-md" : "rounded-xl",
+                                    cardSizeClass
+                                  )}
                                   src={getCardAssetFromId(draggingCardId)}
                                 />
                               )}
@@ -313,12 +341,16 @@ export function TableView3D({
                                   animate={{ 
                                     scale: 1, 
                                     opacity: 1, 
-                                    y: 8 + (sIdx * 10), 
-                                    x: group.base.includes("pudding") ? (sIdx % 2 === 0 ? 4 : -4) : 0,
+                                    y: (isMultiPlayerCompactLayout ? 4 : 8) + (sIdx * (isMultiPlayerCompactLayout ? 6 : 10)), 
+                                    x: group.base.includes("pudding") ? (sIdx % 2 === 0 ? (isMultiPlayerCompactLayout ? 2 : 4) : (isMultiPlayerCompactLayout ? -2 : -4)) : 0,
                                     z: 30 + (sIdx * 2), 
                                     rotateZ: baseRotation + (isMe ? 3 : -3) + (sIdx * 2) 
                                   }}
-                                  className="pointer-events-none absolute bottom-0 left-0 h-32 w-[5.5rem] rounded-xl object-cover shadow-[6px_16px_28px_rgba(0,0,0,0.65)]"
+                                  className={cn(
+                                    "pointer-events-none absolute bottom-0 left-0 object-cover shadow-[6px_16px_28px_rgba(0,0,0,0.65)]",
+                                    isMultiPlayerCompactLayout ? "rounded-md" : "rounded-xl",
+                                    cardSizeClass
+                                  )}
                                   src={getCardAssetFromId(stackedCard)}
                                   transition={{ duration: 0.32, ease: "easeOut" }}
                                 />
@@ -334,7 +366,11 @@ export function TableView3D({
                                     initial={{ scale: 0.98, opacity: 0.95, y: 14, z: 24, rotateZ: baseRotation + (isMe ? 3 : -3) }}
                                     animate={{ scale: [0.98, 1.06, 1], opacity: 1, y: [14, -2, 8], z: [24, 68, 30], rotateZ: baseRotation + (isMe ? 3 : -3) }}
                                     transition={{ duration: 0.32, ease: "easeOut" }}
-                                    className="pointer-events-none absolute bottom-0 left-0 h-32 w-[5.5rem] rounded-xl object-cover shadow-[6px_16px_28px_rgba(0,0,0,0.95)]"
+                                    className={cn(
+                                      "pointer-events-none absolute bottom-0 left-0 object-cover shadow-[6px_16px_28px_rgba(0,0,0,0.95)]",
+                                      isMultiPlayerCompactLayout ? "rounded-md" : "rounded-xl",
+                                      cardSizeClass
+                                    )}
                                     src={getCardAssetFromId(activeOptimisticNigiriId)}
                                   />
                                 )}
@@ -343,7 +379,7 @@ export function TableView3D({
                         });
                       })()
                     ) : (
-                      <div className="flex h-28 items-center justify-center rounded-xl border border-dashed border-white/20 px-8 opacity-50">
+                      <div className={cn("flex items-center justify-center rounded-xl border border-dashed border-white/20 px-8 opacity-50", isMultiPlayerCompactLayout ? "h-20" : "h-28")}>
                         <p className="text-sm font-semibold uppercase tracking-wider text-white">Vacío</p>
                       </div>
                     )}
@@ -353,11 +389,17 @@ export function TableView3D({
             };
 
             return (
-              <div className="flex h-full w-full flex-col justify-between py-6 px-10">
-                <div className="flex w-full flex-wrap justify-center gap-8">
+              <div className={cn(
+                "flex h-full w-full flex-col justify-between py-6",
+                isMultiPlayerCompactLayout ? "px-5 py-4" : "px-10"
+              )}>
+                <div className={cn(
+                  "flex w-full flex-wrap justify-center",
+                  isMultiPlayerCompactLayout ? "gap-4" : "gap-8"
+                )}>
                   {others.map((p) => renderPlayer(p, false))}
                 </div>
-                <div className="flex w-full justify-center">
+                <div className={cn("flex w-full justify-center", isMultiPlayerCompactLayout && "pb-1")}>
                   {me && renderPlayer(me, true)}
                 </div>
               </div>

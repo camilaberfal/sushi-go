@@ -13,7 +13,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Sushi Go! Online",
+  title: "Sushi Go!",
   description: "Partidas multijugador de Sushi Go en tiempo real",
 };
 

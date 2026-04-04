@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 import { CreateRoomModal } from "@/components/landing/create-room-modal";
@@ -14,6 +14,17 @@ import { playSfx } from "@/lib/audio";
 export default function Home() {
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
+  const [joinCodeParam, setJoinCodeParam] = useState("");
+
+  useEffect(() => {
+    const joinParam = new URLSearchParams(window.location.search).get("join") ?? "";
+    setJoinCodeParam(joinParam.trim().toUpperCase());
+  }, []);
+
+  useEffect(() => {
+    if (joinCodeParam.length < 4) return;
+    setJoinOpen(true);
+  }, [joinCodeParam]);
 
   const handleCreate = () => {
     playSfx("select");
@@ -71,7 +82,7 @@ export default function Home() {
       </div>
 
       <CreateRoomModal open={createOpen} onOpenChange={setCreateOpen} />
-      <JoinRoomModal open={joinOpen} onOpenChange={setJoinOpen} />
+      <JoinRoomModal open={joinOpen} onOpenChange={setJoinOpen} initialRoomCode={joinCodeParam} />
     </main>
   );
 }
