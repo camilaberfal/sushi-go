@@ -74,6 +74,33 @@ export default function LobbyPage() {
   }, [loadLobby]);
 
   useEffect(() => {
+    // Fallback de sincronización: evita lobbies "congelados" cuando un cliente
+    // no recibe eventos realtime (caso reportado al entrar por link compartido).
+    const interval = window.setInterval(() => {
+      void loadLobby();
+    }, 2500);
+
+    const onFocus = () => {
+      void loadLobby();
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void loadLobby();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [loadLobby]);
+
+  useEffect(() => {
     if (!room?.id) return;
     const supabase = getSupabaseBrowserClient();
     const channel = supabase

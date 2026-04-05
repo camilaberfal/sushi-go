@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import gyozaImg from "@/app/assets/illustrations/gyoza-illustration.png";
 import makisX3Img from "@/app/assets/illustrations/maki-illustration-x3.png";
@@ -22,7 +22,7 @@ import { scorePuddings } from "@/domain/scoring";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { getRoomStoreState } from "@/store/room-store";
 
-type RoomRow = { id: string; code: string };
+type RoomRow = { id: string; code: string; host_id: string; status?: string };
 type RoomPlayerRow = { user_id: string; display_name: string };
 type GameRow = { id: string; room_id: string | null; status: string; ended_at: string | null; started_at: string };
 type GamePlayerRow = {
@@ -49,11 +49,23 @@ type MatchHistoryRow = {
   highlights: Record<string, unknown>;
 };
 
+type TurnActionRow = {
+  round: number;
+  turn: number;
+  user_id: string | null;
+  selected_card_type: string;
+  submitted_at: string;
+  use_chopsticks: boolean;
+};
+
 type LoadedState = {
+  roomId: string;
+  roomHostId: string;
   game: GameRow;
   players: GamePlayerRow[];
   history: MatchHistoryRow | null;
   roundSummaries: RoundSummaryRow[];
+  turnActions: TurnActionRow[];
 };
 
 const LOADING_SHOWCASE: Array<{ id: string; image: StaticImageData; tint: string }> = [
@@ -148,10 +160,13 @@ function hydrateFromSnapshot(snapshot: SyncAfterTurnPayload, nameByPlayerId: Rec
   }));
 
   return {
+    roomId: snapshot.roomId,
+    roomHostId: "",
     game: syntheticGame,
     players: syntheticPlayers,
     roundSummaries: syntheticRounds,
     history: null,
+    turnActions: [],
   };
 }
 
@@ -274,6 +289,40 @@ function aggregateMetricFromUnknown(value: unknown, metricKeys: string[]): numbe
   return total;
 }
 
+function extractTimingEntriesFromTurnMetrics(players: GamePlayerRow[]): Array<{ playerName: string; timeMs: number; cardId: string }> {
+  const timeKeys = ["timems", "time_ms", "playms", "play_ms", "durationms", "duration_ms", "elapsedms", "elapsed_ms", "responsems", "response_ms"];
+  const cardKeys = ["cardid", "card_id", "selectedcard", "selected_card", "selectedcardtype", "selected_card_type", "card"];
+
+  const entries: Array<{ playerName: string; timeMs: number; cardId: string }> = [];
+
+  for (const player of players) {
+    visitRecords(player.turn_metrics, (record) => {
+      const timePair = Object.entries(record).find(([key, value]) => {
+        const normalized = normalizeKey(key);
+        if (!timeKeys.includes(normalized)) return false;
+        const n = numberFromUnknown(value, Number.NaN);
+        return Number.isFinite(n) && n > 0;
+      });
+
+      if (!timePair) return;
+
+      const timeMs = numberFromUnknown(timePair[1], Number.NaN);
+      if (!Number.isFinite(timeMs) || timeMs <= 0) return;
+
+      const cardPair = Object.entries(record).find(([key]) => cardKeys.includes(normalizeKey(key)));
+      const cardId = stringFromUnknown(cardPair?.[1], "unknown");
+
+      entries.push({
+        playerName: player.display_name,
+        timeMs,
+        cardId: cardKey(cardId),
+      });
+    });
+  }
+
+  return entries;
+}
+
 function resolveWinnerFromTurnMetrics(
   players: GamePlayerRow[],
   metricKeys: string[]
@@ -362,14 +411,22 @@ function readHighlightMetrics(
   highlights: Record<string, unknown>,
   players: GamePlayerRow[],
   persistedCardPlayCount?: Record<string, unknown> | null,
-  persistedPointsByCard?: Record<string, unknown> | null
+  persistedPointsByCard?: Record<string, unknown> | null,
+  turnActions: TurnActionRow[] = []
 ): HighlightStats {
   const defaultPlayer = "Sin datos";
+
+  const cardPlayCountFromActions = turnActions.reduce((acc, action) => {
+    const cardType = stringFromUnknown(action.selected_card_type, "");
+    if (!cardType) return acc;
+    acc[cardType] = numberFromUnknown(acc[cardType], 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   const cardPlayCountMap =
     persistedCardPlayCount ??
     pickDeepRecord(highlights, ["cardPlayCount", "card_play_count", "cardCounts", "cardsPlayedByType"]) ??
-    {};
+    cardPlayCountFromActions;
   const pointsByCardMap =
     persistedPointsByCard ??
     pickDeepRecord(highlights, ["totalPointsByCard", "total_points_by_card", "pointsByCard", "cardPointsMap"]) ??
@@ -438,19 +495,37 @@ function readHighlightMetrics(
     pickDeepNumber(highlights, ["slowestTimeSeconds", "slowest_time_seconds"], 0);
   const slowestRawMs = pickDeepNumber(highlights, ["slowestPlayMs", "slowest_play_ms", "slowestTimeMs", "slowest_time_ms"], 0);
 
-  const fastestSeconds = fastestRawSeconds > 0 ? fastestRawSeconds : fastestRawMs > 0 ? fastestRawMs / 1000 : 0;
-  const slowestSeconds = slowestRawSeconds > 0 ? slowestRawSeconds : slowestRawMs > 0 ? slowestRawMs / 1000 : 0;
+  const timingFromTurnMetrics = extractTimingEntriesFromTurnMetrics(players);
+  const fastestMetric = [...timingFromTurnMetrics].sort((a, b) => a.timeMs - b.timeMs)[0];
+  const slowestMetric = [...timingFromTurnMetrics].sort((a, b) => b.timeMs - a.timeMs)[0];
+
+  const fastestSeconds =
+    fastestRawSeconds > 0
+      ? fastestRawSeconds
+      : fastestRawMs > 0
+        ? fastestRawMs / 1000
+        : fastestMetric
+          ? fastestMetric.timeMs / 1000
+          : 0;
+  const slowestSeconds =
+    slowestRawSeconds > 0
+      ? slowestRawSeconds
+      : slowestRawMs > 0
+        ? slowestRawMs / 1000
+        : slowestMetric
+          ? slowestMetric.timeMs / 1000
+          : 0;
 
   return {
     fastestPlay: {
-      playerName: fastestName || defaultPlayer,
+      playerName: fastestName || fastestMetric?.playerName || defaultPlayer,
       fastestTime: fastestSeconds,
-      cardId: fastestCard ? cardKey(fastestCard) : "unknown",
+      cardId: fastestCard ? cardKey(fastestCard) : fastestMetric?.cardId || "unknown",
     },
     slowestPlay: {
-      playerName: slowestName || defaultPlayer,
+      playerName: slowestName || slowestMetric?.playerName || defaultPlayer,
       slowestTime: slowestSeconds,
-      cardId: slowestCard ? cardKey(slowestCard) : "unknown",
+      cardId: slowestCard ? cardKey(slowestCard) : slowestMetric?.cardId || "unknown",
     },
     mostPlayedCard: {
       cardId: mostPlayedCard ? cardKey(mostPlayedCard) : "unknown",
@@ -771,6 +846,8 @@ export default function ScoreboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<LoadedState | null>(null);
   const [showWinnerIntro, setShowWinnerIntro] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [startingRematch, setStartingRematch] = useState(false);
 
   const isRoomCodeValid = roomCode.length > 0;
 
@@ -779,7 +856,10 @@ export default function ScoreboardPage() {
 
     const load = async () => {
       const supabase = getSupabaseBrowserClient();
-      const roomRes = await supabase.from("rooms").select("id, code").eq("code", roomCode).single();
+      const auth = await supabase.auth.getUser();
+      setCurrentUserId(auth.data.user?.id ?? null);
+
+      const roomRes = await supabase.from("rooms").select("id, code, host_id, status").eq("code", roomCode).single();
       if (roomRes.error || !roomRes.data) {
         setError("No se encontro la sala para este scoreboard.");
         setLoading(false);
@@ -803,7 +883,10 @@ export default function ScoreboardPage() {
       if (gameRes.error || !gameRes.data) {
         const snapshotFallback = readFinalSnapshotFallback(roomCode);
         if (snapshotFallback) {
-          setState(hydrateFromSnapshot(snapshotFallback, nameByPlayerId));
+          setState({
+            ...hydrateFromSnapshot(snapshotFallback, nameByPlayerId),
+            roomHostId: room.host_id,
+          });
           setLoading(false);
           return;
         }
@@ -814,46 +897,52 @@ export default function ScoreboardPage() {
       }
 
       const game = gameRes.data as GameRow;
-      const [playersRes, roundsRes, historyRes] = await Promise.all([
+      const [playersRes, roundsRes, historyRes, turnActionsRes] = await Promise.all([
         supabase
           .from("game_players")
           .select("game_id, user_id, display_name, final_score, puddings, score_by_round, turn_metrics")
           .eq("game_id", game.id),
         supabase.from("round_summaries").select("game_id, round, payload").eq("game_id", game.id),
         supabase.from("match_history").select("game_id, total_duration_ms, card_play_count, total_points_by_card, highlights").eq("game_id", game.id).maybeSingle(),
+        supabase
+          .from("turn_actions")
+          .select("round, turn, user_id, selected_card_type, submitted_at, use_chopsticks")
+          .eq("game_id", game.id),
       ]);
 
-      if (playersRes.error || roundsRes.error || historyRes.error) {
-        setError(playersRes.error?.message ?? roundsRes.error?.message ?? historyRes.error?.message ?? "Error inesperado");
+      if (playersRes.error || roundsRes.error || historyRes.error || turnActionsRes.error) {
+        setError(
+          playersRes.error?.message ??
+            roundsRes.error?.message ??
+            historyRes.error?.message ??
+            turnActionsRes.error?.message ??
+            "Error inesperado"
+        );
         setLoading(false);
         return;
       }
 
+      const loadedTurnActions = (turnActionsRes.data ?? []) as TurnActionRow[];
+
       const loadedPlayers = (playersRes.data ?? []) as GamePlayerRow[];
       const loadedHistory = (historyRes.data ?? null) as MatchHistoryRow | null;
       const canonicalPlayers = buildCanonicalPlayers(loadedPlayers);
-      const computedStats = normalizeForensicStats(
-        readHighlightMetrics(
-          loadedHistory?.highlights ?? {},
-          canonicalPlayers,
-          (loadedHistory?.card_play_count as Record<string, unknown> | undefined) ?? null,
-          (loadedHistory?.total_points_by_card as Record<string, unknown> | undefined) ?? null
-        ),
-        canonicalPlayers,
-        loadedHistory?.total_duration_ms ?? 0
-      );
       const canonicalHighlights: Record<string, unknown> = {
         ...(loadedHistory?.highlights ?? {}),
       };
-      void computedStats;
 
       setState({
+        roomId: room.id,
+        roomHostId: room.host_id,
         game,
         players: loadedPlayers,
         roundSummaries: (roundsRes.data ?? []) as RoundSummaryRow[],
+        turnActions: loadedTurnActions,
         history: {
           game_id: game.id,
           total_duration_ms: loadedHistory?.total_duration_ms ?? 0,
+          card_play_count: (loadedHistory?.card_play_count as Record<string, unknown> | undefined) ?? undefined,
+          total_points_by_card: (loadedHistory?.total_points_by_card as Record<string, unknown> | undefined) ?? undefined,
           highlights: canonicalHighlights,
         },
       });
@@ -863,6 +952,44 @@ export default function ScoreboardPage() {
 
     void load();
   }, [isRoomCodeValid, roomCode]);
+
+  useEffect(() => {
+    if (!state?.roomId) return;
+
+    const supabase = getSupabaseBrowserClient();
+    const channel = supabase
+      .channel(`scoreboard-room-watch:${state.roomId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "rooms", filter: `id=eq.${state.roomId}` }, (payload) => {
+        const nextStatus = (payload.new as { status?: string } | null)?.status;
+        if (nextStatus === "ROUND_1" || nextStatus === "ROUND_2" || nextStatus === "ROUND_3") {
+          router.push(`/game/${roomCode}`);
+        }
+      });
+
+    channel.subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomCode, router, state?.roomId]);
+
+  const handleRematch = useCallback(async () => {
+    if (!state?.roomId) return;
+
+    const isHost = Boolean(currentUserId && state.roomHostId && currentUserId === state.roomHostId);
+    if (!isHost) {
+      // Los no-host quedan esperando; al iniciar el host, los redirige el watcher de estado.
+      return;
+    }
+
+    setStartingRematch(true);
+    const supabase = getSupabaseBrowserClient();
+    const updateRes = await supabase.from("rooms").update({ status: "ROUND_1" }).eq("id", state.roomId);
+    setStartingRematch(false);
+
+    if (!updateRes.error) {
+      router.push(`/game/${roomCode}`);
+    }
+  }, [currentUserId, roomCode, router, state?.roomHostId, state?.roomId]);
 
   const data = useMemo(() => {
     if (!state) return null;
@@ -875,7 +1002,8 @@ export default function ScoreboardPage() {
         highlights,
         canonicalPlayers,
         (state.history?.card_play_count as Record<string, unknown> | undefined) ?? null,
-        (state.history?.total_points_by_card as Record<string, unknown> | undefined) ?? null
+        (state.history?.total_points_by_card as Record<string, unknown> | undefined) ?? null,
+        state.turnActions
       ),
       canonicalPlayers,
       state.history?.total_duration_ms ?? null
@@ -937,7 +1065,7 @@ export default function ScoreboardPage() {
         achievements={data.achievements}
         stats={data.stats}
         totalDurationMs={data.totalDurationMs}
-        onRematch={() => router.push(`/lobby/${roomCode}`)}
+        onRematch={startingRematch ? undefined : handleRematch}
         onHome={() => router.push("/")}
       />
 

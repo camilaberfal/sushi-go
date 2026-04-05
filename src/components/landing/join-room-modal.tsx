@@ -103,7 +103,7 @@ export function JoinRoomModal({ open, onOpenChange, initialRoomCode }: JoinRoomM
             className="w-full max-w-md rounded-3xl border-2 border-cyan-900/50 bg-[#1c0d12] p-8 shadow-[inset_0_2px_4px_rgba(255,255,255,0.05),0_24px_50px_rgba(0,0,0,0.9)] relative z-50"
           >
             <h2 className="font-heading text-4xl text-cyan-400 drop-shadow-[0_2px_4px_rgba(34,211,238,0.3)]">Unirse</h2>
-            <p className="mt-2 text-sm font-bold uppercase tracking-wider text-cyan-200/50">Ingresa tu pase al caos</p>
+            <p className="mt-2 text-sm font-bold uppercase tracking-wider text-cyan-200/50">¡Ingresa tu código de sala!</p>
 
             <div className="mt-8 space-y-6">
               <div className="space-y-3">
