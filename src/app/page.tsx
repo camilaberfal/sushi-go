@@ -61,7 +61,7 @@ const gameplaySteps: StepItem[] = [
     description:
       "Todos seleccionan una carta en secreto al mismo tiempo. La decisión importa mucho por los combos.",
     accent: "from-indigo-500/25 to-transparent",
-    image: makiCardX1,
+    icon: <span className="text-4xl drop-shadow-sm">🎴</span>,
   },
   {
     title: "3. Pasa la mano",
@@ -301,7 +301,7 @@ export default function Home() {
               viewport={{ once: true }}
               className="relative lg:w-3/5 w-full flex justify-center py-10"
             >
-              <div className="relative z-10 w-full max-w-[800px] aspect-[16/10] overflow-hidden rounded-[2rem] border-[8px] border-[#2a141d] bg-[#0c0508] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] sm:rounded-[3rem] sm:border-[12px] flex items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.05),transparent_50%)]">
+              <div className="relative z-10 w-full max-w-[560px] aspect-[16/10] overflow-hidden rounded-[2rem] border-[6px] border-[#2a141d] bg-[#0c0508] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] sm:rounded-[3rem] sm:border-[10px] flex items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.05),transparent_50%)]">
                 <Image 
                   src="/gameplay-table-clean.png" 
                   alt="Mesa de Juego 3D" 
@@ -329,7 +329,7 @@ export default function Home() {
               viewport={{ once: true }}
               className="relative lg:w-3/5 w-full flex justify-center py-10"
             >
-              <div className="relative z-10 w-full max-w-[700px] aspect-[16/10] overflow-hidden rounded-[2rem] border-[8px] border-[#2a141d] bg-[#0c0508] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] sm:rounded-[3rem] sm:border-[12px] flex items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.05),transparent_50%)]">
+              <div className="relative z-10 w-full max-w-[500px] aspect-[16/10] overflow-hidden rounded-[2rem] border-[6px] border-[#2a141d] bg-[#0c0508] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] sm:rounded-[3rem] sm:border-[10px] flex items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.05),transparent_50%)]">
                 <Image 
                   src="/gameplay-hand-clean.png" 
                   alt="Mano de Cartas" 
@@ -391,7 +391,7 @@ export default function Home() {
               viewport={{ once: true }}
               className="relative flex justify-center lg:w-1/2 xl:w-3/5 py-10"
             >
-              <div className="relative z-10 w-full max-w-[360px] aspect-[9/16] sm:aspect-[10/16] overflow-hidden rounded-[2rem] border-[8px] border-[#2a141d] bg-[#0c0508] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] sm:rounded-[3rem] sm:border-[12px] flex items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.05),transparent_50%)]">
+              <div className="relative z-10 w-full max-w-[280px] aspect-[9/16] sm:aspect-[10/16] overflow-hidden rounded-[2rem] border-[6px] border-[#2a141d] bg-[#0c0508] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] sm:rounded-[3rem] sm:border-[10px] flex items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.05),transparent_50%)]">
                 <Image 
                   src="/gameplay-scoreboard-clean.png" 
                   alt="Panel de Puntos" 
@@ -404,7 +404,7 @@ export default function Home() {
               <motion.div 
                 animate={{ rotate: [-5, 5, -5] }}
                 transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute -right-8 -top-8 z-20 w-32 drop-shadow-2xl"
+                className="absolute -right-2 -top-2 z-20 w-28 drop-shadow-2xl"
               >
                 <Image src={wasabiIllustration} alt="" className="rotate-12" />
               </motion.div>
